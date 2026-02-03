@@ -169,45 +169,8 @@ app.get('/api/rng', async (req, res) => {
   }
 });
 
-app.get('/api/verify/:id', async (req, res) => {
-  const id = String(req.params.id || '');
-  const stored = getSignedResult(id);
-  if (!stored) {
-    return res.status(404).json({ ok: false, error: 'unknown_or_expired' });
-  }
-
-  try {
-    const payload = {
-      jsonrpc: '2.0',
-      method: 'verifySignature',
-      params: {
-        random: stored.random,
-        signature: stored.signature
-      },
-      id: Date.now()
-    };
-
-    const r = await fetch('https://api.random.org/json-rpc/4/invoke', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    const j = await r.json().catch(() => null);
-    if (!r.ok) {
-      return res.status(502).json({ ok: false, error: 'random.org verify failed', status: r.status, detail: j });
-    }
-    if (!j || j.error) {
-      return res.status(502).json({ ok: false, error: 'random.org verify error', detail: j && (j.error || j) });
-    }
-
-    // random.org typically returns { result: { authenticity: true/false } }
-    const authenticity = j?.result?.authenticity;
-    res.json({ ok: true, authenticity: Boolean(authenticity), raw: j?.result });
-  } catch (e) {
-    res.status(502).json({ ok: false, error: 'verifySignature call failed', message: String(e?.message || e) });
-  }
-});
+// NOTE: We intentionally do NOT self-verify on behalf of users.
+// Users can verify independently on random.org using the payload shown on /verify/:id.
 
 app.get('/verify/:id', async (req, res) => {
   const id = String(req.params.id || '');
@@ -253,12 +216,15 @@ app.get('/verify/:id', async (req, res) => {
     </div>
 
     <div style="flex:1;min-width:280px">
-      <p>This page checks the <code>random</code> object + <code>signature</code> using random.org’s <code>verifySignature</code> API.</p>
-      <div class="card" id="card">Checking…</div>
-      <p style="margin-top:12px">
-        Also verify yourself on random.org (public form):
-        <a href="https://api.random.org/signatures/form" target="_blank" rel="noreferrer">https://api.random.org/signatures/form</a>
-      </p>
+      <p>This page is a proof bundle: it contains the <code>random</code> object and <code>signature</code> you can verify directly on random.org.</p>
+      <div class="card">
+        <div style="font-weight:700">How to verify</div>
+        <ol style="margin:10px 0 0 18px">
+          <li>Open: <a href="https://api.random.org/signatures/form" target="_blank" rel="noreferrer">https://api.random.org/signatures/form</a></li>
+          <li>Paste the <b>random (JSON)</b> and <b>signature</b> from below</li>
+          <li>Submit — random.org should confirm the signature is valid</li>
+        </ol>
+      </div>
     </div>
   </div>
 
@@ -299,21 +265,7 @@ app.get('/verify/:id', async (req, res) => {
     }
   }
 
-  (async () => {
-    const el = document.getElementById('card');
-    try {
-      const r = await fetch('/api/verify/${id}');
-      const j = await r.json();
-      if (!r.ok) throw new Error(j?.error || 'verify failed');
-      if (j.authenticity) {
-        el.innerHTML = '<div class="ok">VALID</div><div>random.org verified this result (via verifySignature).</div>';
-      } else {
-        el.innerHTML = '<div class="bad">INVALID</div><div>random.org did not verify this result.</div>';
-      }
-    } catch (e) {
-      el.innerHTML = '<div class="bad">ERROR</div><div>' + (e.message || String(e)) + '</div>';
-    }
-  })();
+  // No self-verification here; this page only shows proof data for manual verification on random.org.
 </script>
 </body>
 </html>`);
