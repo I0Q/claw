@@ -277,6 +277,15 @@ app.get('/assets/app.js', (req, res) => {
     try {
       const [j] = await Promise.all([fetchPromise, sleep(duration)]);
       status.textContent = 'Done';
+
+      // If backend provides a dedicated result page, use it.
+      if (j.resultUrl) {
+        confettiBurst();
+        await sleep(250);
+        window.location.href = j.resultUrl;
+        return;
+      }
+
       out.textContent = String(j.value);
       out.classList.remove('pop');
       // force reflow
@@ -475,6 +484,7 @@ app.get('/api/rng', async (req, res) => {
 
     const storeId = storeSignedResult({ random, signature });
     const verifyUrl = `/verify/${encodeURIComponent(storeId)}`;
+    const resultUrl = `/result/${encodeURIComponent(storeId)}`;
 
     res.json({
       ok: true,
@@ -484,7 +494,8 @@ app.get('/api/rng', async (req, res) => {
       source: 'random.org',
       completionTime: random?.completionTime,
       serialNumber: random?.serialNumber,
-      verifyUrl
+      verifyUrl,
+      resultUrl
     });
   } catch (e) {
     res.status(502).json({ ok: false, error: 'random.org call failed', message: String(e?.message || e) });
@@ -504,7 +515,6 @@ app.get('/verify/:id', async (req, res) => {
   const verifyPageUrl = `${req.protocol}://${req.get('host')}/verify/${encodeURIComponent(id)}`;
   const qr = await QRCode.toDataURL(verifyPageUrl, { margin: 1, width: 240 });
 
-  // Keep the payload copy/paste friendly.
   const randomJson = JSON.stringify(stored.random, null, 2);
   const signature = String(stored.signature);
 
@@ -516,12 +526,9 @@ app.get('/verify/:id', async (req, res) => {
   <title>Verify RNG (random.org)</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:860px}
-    .card{border:1px solid #ddd;border-radius:10px;padding:18px}
-    .ok{color:#0b7a0b;font-weight:700}
-    .bad{color:#b00020;font-weight:700}
+    .card{border:1px solid #ddd;border-radius:14px;padding:18px;background:#fff;box-shadow:0 10px 30px rgba(0,0,0,0.06)}
     code{background:#f6f6f6;padding:2px 6px;border-radius:6px}
     textarea{width:100%;min-height:160px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;padding:10px;border-radius:8px;border:1px solid #ddd}
-    .row{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
     .qr{border:1px solid #ddd;border-radius:10px;padding:10px;display:inline-block;background:#fff}
     button{padding:8px 12px;font-size:14px;cursor:pointer}
     a{word-break:break-word}
@@ -530,10 +537,8 @@ app.get('/verify/:id', async (req, res) => {
 <body>
   <h1>Verification</h1>
 
-  <p>This page is a proof bundle: it contains the <code>random</code> object and <code>signature</code> you can verify directly on random.org.</p>
-
   <div class="card">
-    <div style="font-weight:700">Verify on random.org</div>
+    <div style="font-weight:800">Verify on random.org</div>
     <ol style="margin:10px 0 0 18px">
       <li>Open: <a href="https://api.random.org/signatures/form" target="_blank" rel="noreferrer">https://api.random.org/signatures/form</a></li>
       <li>Paste <b>random (JSON)</b> and <b>signature</b> from below</li>
@@ -541,7 +546,7 @@ app.get('/verify/:id', async (req, res) => {
     </ol>
   </div>
 
-  <div class="card">
+  <div class="card" style="margin-top:14px">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
       <div style="font-weight:700">random (JSON)</div>
       <button type="button" onclick="copyText('random')">Copy random</button>
@@ -559,15 +564,72 @@ app.get('/verify/:id', async (req, res) => {
 
   <div class="card" style="margin-top:14px">
     <div style="font-weight:700;margin-bottom:8px">QR code (proof link)</div>
-    <div class="qr">
-      <img alt="QR" src="${qr}" width="240" height="240" />
-    </div>
+    <div class="qr"><img alt="QR" src="${qr}" width="240" height="240" /></div>
     <div style="margin-top:8px;font-size:12px"><a href="${verifyPageUrl}">${verifyPageUrl}</a></div>
   </div>
 
   <p style="margin-top:18px"><a href="/">Back</a></p>
 
 <script src="/assets/verify.js" defer></script>
+</body>
+</html>`);
+});
+
+app.get('/result/:id', async (req, res) => {
+  const id = String(req.params.id || '');
+  const stored = getSignedResult(id);
+  if (!stored) {
+    return res.status(404).type('html').send('<h1>Expired</h1><p>This result link is unknown or has expired.</p>');
+  }
+
+  const value = stored?.random?.data?.[0];
+  const verifyUrl = `/verify/${encodeURIComponent(id)}`;
+
+  res.type('html').send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Result</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+      background:
+        radial-gradient(900px 280px at 20% 0%, rgba(106,90,205,0.18), transparent 60%),
+        radial-gradient(900px 280px at 80% 20%, rgba(0,188,212,0.16), transparent 60%),
+        #ffffff;
+    }
+    .wrap{width:min(760px, calc(100vw - 40px));}
+    .card{border:1px solid rgba(0,0,0,0.10);border-radius:18px;padding:26px;background:
+      linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.92));
+      box-shadow: 0 16px 50px rgba(0,0,0,0.10);
+      text-align:center;
+    }
+    .num{font-size:84px;font-weight:950;letter-spacing:1px;display:inline-flex;align-items:center;justify-content:center;
+      padding:18px 26px;border-radius:22px;
+      background: linear-gradient(135deg, rgba(106,90,205,0.18), rgba(0,188,212,0.16));
+      border: 1px solid rgba(0,0,0,0.06);
+      margin: 18px auto 6px auto;
+    }
+    .btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:16px}
+    a.btn{display:inline-block;padding:12px 16px;border-radius:12px;text-decoration:none;font-weight:700;border:1px solid rgba(0,0,0,0.12)}
+    a.primary{background:#111;color:#fff;border-color:#111}
+    a.ghost{background:#fff;color:#111}
+    .small{color:#666;font-size:13px;margin-top:10px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div style="font-weight:800;font-size:18px">Result</div>
+      <div class="num">${String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</div>
+      <div class="small">Generated by random.org (signed)</div>
+      <div class="btns">
+        <a class="btn primary" href="${verifyUrl}">Verify</a>
+        <a class="btn ghost" href="/">Generate another</a>
+      </div>
+      <div style="margin-top:14px"><a href="/logout">Logout</a></div>
+    </div>
+  </div>
 </body>
 </html>`);
 });
