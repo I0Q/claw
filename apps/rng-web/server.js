@@ -246,6 +246,7 @@ app.get('/assets/app.js', (req, res) => {
 
     err.textContent = '';
     verify.textContent = '';
+    out.textContent = '—';
 
     const min = Number($('min').value);
     const max = Number($('max').value);
@@ -335,14 +336,32 @@ app.get('/', (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RNG</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:720px}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:720px;
+      background:
+        radial-gradient(900px 280px at 20% 0%, rgba(106,90,205,0.16), transparent 60%),
+        radial-gradient(900px 280px at 80% 20%, rgba(0,188,212,0.14), transparent 60%),
+        #ffffff;
+    }
     label{display:block;margin:12px 0 6px}
     input{padding:10px;font-size:16px;width:220px}
     button{padding:10px 14px;font-size:16px;cursor:pointer}
     .row{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end}
-    .card{border:1px solid #ddd;border-radius:10px;padding:18px}
+    .card{border:1px solid #ddd;border-radius:14px;padding:18px;background:
+      linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.92)),
+      radial-gradient(500px 120px at 20% 0%, rgba(106,90,205,0.12), transparent 60%),
+      radial-gradient(500px 120px at 80% 40%, rgba(0,188,212,0.10), transparent 60%);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+    }
     code{background:#f6f6f6;padding:2px 6px;border-radius:6px}
-    #out{font-size:34px;font-weight:800;margin-top:10px;transition:transform 180ms ease}
+    #out{font-size:44px;font-weight:900;margin-top:14px;text-align:center;letter-spacing:0.5px;
+      padding:14px 12px;border-radius:16px;
+      background: linear-gradient(135deg, rgba(106,90,205,0.16), rgba(0,188,212,0.14));
+      border: 1px solid rgba(0,0,0,0.06);
+      display:inline-flex;align-items:center;justify-content:center;min-width:110px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+      transition:transform 180ms ease;
+    }
+    .outWrap{display:flex;justify-content:center}
     #out.pop{transform:scale(1.12)}
     .barWrap{margin-top:14px;height:10px;background:#eee;border-radius:999px;overflow:hidden;display:none}
     .bar{height:100%;width:0%;background:linear-gradient(90deg,#6a5acd,#00bcd4);border-radius:999px}
@@ -369,7 +388,7 @@ app.get('/', (req, res) => {
         <button id="go">Generate</button>
       </div>
     </div>
-    <div id="out"></div>
+    <div class="outWrap"><div id="out">—</div></div>
     <div class="barWrap" id="barWrap"><div class="bar" id="bar"></div></div>
     <div class="muted" id="status" style="display:none">Generating…</div>
     <div id="verify" style="margin-top:10px"></div>
