@@ -237,7 +237,7 @@ app.get('/assets/app.js', (req, res) => {
 
   async function runGenerate(){
     const btn = $('go');
-    const barWrap = $('barWrap');
+    const barWrap = $('progressWrap');
     const bar = $('bar');
     const status = $('status');
     const err = $('err');
@@ -445,7 +445,7 @@ app.get('/', (req, res) => {
         <button id="go">Generate</button>
       </div>
     </div>
-        <div class="barWrap" id="barWrap"><div class="bar" id="bar"></div></div>
+        <div class="progressWrap" id="progressWrap"><div class="bar" id="bar"></div></div>
     <div class="muted" id="status" style="display:none">Generating…</div>
     <div id="verify" style="margin-top:10px"></div>
     <div id="err" style="color:#b00020;margin-top:8px"></div>
