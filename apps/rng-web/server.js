@@ -6,6 +6,151 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '64kb' }));
 
+// --- Passphrase gate (24h sessions) ---
+// Stored secret is a SHA-256 hex digest (64 chars) in env PASSPHRASE_SHA256.
+const PASSPHRASE_SHA256 = (process.env.PASSPHRASE_SHA256 || '').trim().toLowerCase();
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const sessions = new Map();
+
+function parseCookies(req) {
+  const header = req.headers.cookie || '';
+  const out = {};
+  header.split(';').forEach(part => {
+    const i = part.indexOf('=');
+    if (i === -1) return;
+    const k = part.slice(0, i).trim();
+    const v = part.slice(i + 1).trim();
+    if (!k) return;
+    out[k] = decodeURIComponent(v);
+  });
+  return out;
+}
+
+function setCookie(res, name, value, { maxAgeMs } = {}) {
+  const secure = (process.env.NODE_ENV === 'production');
+  const parts = [
+    `${name}=${encodeURIComponent(value)}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax'
+  ];
+  if (secure) parts.push('Secure');
+  if (maxAgeMs != null) parts.push(`Max-Age=${Math.floor(maxAgeMs / 1000)}`);
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+function clearCookie(res, name) {
+  res.setHeader('Set-Cookie', `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
+}
+
+function cleanupSessions() {
+  const now = Date.now();
+  for (const [k, v] of sessions.entries()) {
+    if (!v || (now - v.createdAt) > SESSION_TTL_MS) sessions.delete(k);
+  }
+}
+
+function sha256Hex(s) {
+  return crypto.createHash('sha256').update(s, 'utf8').digest('hex');
+}
+
+function timingSafeEqHex(a, b) {
+  try {
+    const ba = Buffer.from(String(a).toLowerCase(), 'hex');
+    const bb = Buffer.from(String(b).toLowerCase(), 'hex');
+    if (ba.length !== bb.length) return False;
+    return crypto.timingSafeEqual(ba, bb);
+  } catch {
+    return false;
+  }
+}
+
+function isAuthed(req) {
+  cleanupSessions();
+  const cookies = parseCookies(req);
+  const sid = cookies.rng_sid;
+  if (!sid) return false;
+  const s = sessions.get(sid);
+  if (!s) return false;
+  if ((Date.now() - s.createdAt) > SESSION_TTL_MS) {
+    sessions.delete(sid);
+    return false;
+  }
+  return true;
+}
+
+// Login page (GET)
+app.get('/login', (req, res) => {
+  const err = String(req.query.err || '');
+  res.type('html').send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:520px}
+    .card{border:1px solid #ddd;border-radius:10px;padding:18px}
+    input{padding:10px;font-size:16px;width:100%}
+    button{padding:10px 14px;font-size:16px;cursor:pointer;margin-top:12px}
+    .err{color:#b00020;margin-top:10px}
+  </style>
+</head>
+<body>
+  <h1>Enter passphrase</h1>
+  <div class="card">
+    <form method="post" action="/login">
+      <input type="password" name="passphrase" placeholder="Passphrase" autofocus required />
+      <button type="submit">Unlock</button>
+      ${err ? `<div class="err">${err.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</div>` : ''}
+    </form>
+  </div>
+</body>
+</html>`);
+});
+
+// Login handler (POST)
+app.use(express.urlencoded({ extended: false, limit: '4kb' }));
+app.post('/login', (req, res) => {
+  if (!PASSPHRASE_SHA256 || !/^[0-9a-f]{64}$/.test(PASSPHRASE_SHA256)) {
+    return res.status(500).type('html').send('<h1>Server misconfigured</h1>');
+  }
+  const passphrase = String(req.body?.passphrase || '');
+  const digest = sha256Hex(passphrase);
+  const ok = crypto.timingSafeEqual(Buffer.from(digest, 'hex'), Buffer.from(PASSPHRASE_SHA256, 'hex'));
+
+  if (!ok) {
+    // small delay to slow brute force
+    const t = Date.now() + 450;
+    while (Date.now() < t) {}
+    return res.redirect('/login?err=Wrong%20passphrase');
+  }
+
+  const sid = crypto.randomUUID();
+  sessions.set(sid, { createdAt: Date.now() });
+  setCookie(res, 'rng_sid', sid, { maxAgeMs: SESSION_TTL_MS });
+  res.redirect('/');
+});
+
+app.get('/logout', (req, res) => {
+  const cookies = parseCookies(req);
+  if (cookies.rng_sid) sessions.delete(cookies.rng_sid);
+  clearCookie(res, 'rng_sid');
+  res.redirect('/login');
+});
+
+function requireAuth(req, res, next) {
+  if (isAuthed(req)) return next();
+  // Allow health checks through.
+  if (req.path === '/health') return next();
+  // Allow login/logout.
+  if (req.path === '/login' || req.path === '/logout') return next();
+  return res.redirect('/login');
+}
+
+// Gate everything by default.
+app.use(requireAuth);
+
 app.get('/health', (req, res) => {
   res.json({ ok: true, service: 'rng-web' });
 });
@@ -31,6 +176,7 @@ app.get('/', (req, res) => {
 </head>
 <body>
   <h1>Random Number Generator</h1>
+  <p><a href="/logout">Logout</a></p>
   <p>Backend uses <code>random.org</code> via their JSON-RPC API.</p>
 
   <div class="card">
