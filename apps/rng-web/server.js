@@ -11,8 +11,20 @@ app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use(
   helmet({
-    // We serve only inline scripts/styles right now; keep CSP off for now to avoid breaking UI.
-    contentSecurityPolicy: false
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        frameAncestors: ["'none'"],
+        objectSrc: ["'none'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:'],
+        connectSrc: ["'self'", 'https://api.random.org'],
+        formAction: ["'self'"],
+        upgradeInsecureRequests: []
+      }
+    }
   })
 );
 
@@ -220,28 +232,7 @@ app.get('/', (req, res) => {
     <div id="err" style="color:#b00020;margin-top:8px"></div>
   </div>
 
-<script>
-  const $ = (id) => document.getElementById(id);
-  $('go').addEventListener('click', async () => {
-    $('err').textContent = '';
-    $('out').textContent = '';
-    const min = Number($('min').value);
-    const max = Number($('max').value);
-    try {
-      const r = await fetch('/api/rng?min=' + encodeURIComponent(min) + '&max=' + encodeURIComponent(max));
-      const j = await r.json();
-      if (!r.ok) throw new Error(j?.error || 'Request failed');
-      $('out').textContent = String(j.value);
-      if (j.verifyUrl) {
-        $('verify').innerHTML = '<a href="' + j.verifyUrl + '">Verify on random.org</a>';
-      } else {
-        $('verify').textContent = '';
-      }
-    } catch (e) {
-      $('err').textContent = e.message || String(e);
-    }
-  });
-</script>
+<script src="/assets/app.js" defer></script>
 </body>
 </html>`);
 });
@@ -413,20 +404,7 @@ app.get('/verify/:id', async (req, res) => {
 
   <p style="margin-top:18px"><a href="/">Back</a></p>
 
-<script>
-  async function copyText(id) {
-    const el = document.getElementById(id);
-    try {
-      await navigator.clipboard.writeText(el.value);
-    } catch {
-      el.select();
-      document.execCommand('copy');
-      window.getSelection().removeAllRanges();
-    }
-  }
-
-  // No self-verification here; this page only shows proof data for manual verification on random.org.
-</script>
+<script src="/assets/verify.js" defer></script>
 </body>
 </html>`);
 });
