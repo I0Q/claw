@@ -146,8 +146,8 @@ app.get('/login', (req, res) => {
       body: `
         <div class="pageCenter">
           <div class="h1">Enter passphrase</div>
-          <div class="card">
-            <form method="post" action="/login" class="formStack">
+          <div class="card centerCard">
+            <form method="post" action="/login" class="formStack" style="width:100%">
               <label for="pass">Passphrase</label>
               <input id="pass" type="password" name="passphrase" placeholder="Passphrase" autofocus required />
               <button type="submit">Unlock</button>
@@ -215,6 +215,10 @@ main{padding-top:calc(var(--topbar-h) + 18px);padding-left:var(--pad);padding-ri
 
 .container{max-width:720px;margin:0 auto}
 .card{background:rgba(255,255,255,0.92);border:1px solid rgba(0,0,0,0.10);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px}
+.centerCard{display:flex;flex-direction:column;align-items:center;text-align:center}
+.formStack{align-items:center}
+.formStack input{width:min(320px, 100%)}
+
 .h1{font-size:40px;line-height:1.05;margin:12px 0 14px;font-weight:800}
 @media (max-width:420px){.h1{font-size:34px}}
 .p{margin:8px 0;color:#333}
@@ -246,6 +250,11 @@ textarea{width:100%;min-height:160px;font-family:ui-monospace,SFMono-Regular,Men
 .copyRow{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .qr{border:1px solid rgba(0,0,0,0.12);border-radius:14px;padding:10px;display:inline-block;background:#fff}
 canvas.confetti{position:fixed;inset:0;pointer-events:none;z-index:500}
+.rankList{margin:16px auto 0; padding:0; list-style:none; width:min(420px, 100%); text-align:left}
+.rankList li{display:flex; justify-content:space-between; gap:12px; padding:10px 12px; border:1px solid rgba(0,0,0,0.08); border-radius:12px; background:rgba(255,255,255,0.8); margin:8px 0}
+.rankList .idx{color:#666; font-weight:600}
+.rankList .val{font-weight:800; font-size:18px}
+
 `);
 });
 
@@ -269,10 +278,12 @@ app.get('/assets/app.js', (req, res) => {
 
     const min = Number($('min').value);
     const max = Number($('max').value);
+    const count = Math.max(1, Math.min(10, Number($('count')?.value || 1)));
+
 
     btn.disabled = true;
 
-    const fetchPromise = fetch('/api/rng?min=' + encodeURIComponent(min) + '&max=' + encodeURIComponent(max))
+    const fetchPromise = fetch('/api/rng?min=' + encodeURIComponent(min) + '&max=' + encodeURIComponent(max) + '&count=' + encodeURIComponent(count))
       .then(async r => {
         const j = await r.json().catch(() => null);
         if (!r.ok) throw new Error(j?.error || 'Request failed');
@@ -396,8 +407,8 @@ app.get('/', (req, res) => {
         <div class="pageCenter">
           <div class="h1">Random Number Generator</div>
           <div class="p">Backend uses <code>random.org</code> via their JSON-RPC API.</div>
-          <div class="card">
-            <div class="row">
+          <div class="card centerCard">
+            <div class="row" style="justify-content:center">
               <div>
                 <label for="min">Min (inclusive)</label>
                 <input id="min" type="number" value="1" />
@@ -407,16 +418,20 @@ app.get('/', (req, res) => {
                 <input id="max" type="number" value="100" />
               </div>
               <div>
+                <label for="count">Count (1–10)</label>
+                <input id="count" type="number" value="1" min="1" max="10" />
+              </div>
+              <div>
                 <button id="go">Generate</button>
               </div>
             </div>
 
-            <div class="progressWrap" id="progressWrap" style="display:none">
+            <div class="progressWrap" id="progressWrap" style="display:none; width:min(520px, 100%); margin-left:auto; margin-right:auto">
               <div class="progressBar"><div class="progressFill" id="bar"></div></div>
               <div class="status" id="status"></div>
             </div>
 
-            <div id="err" class="err"></div>
+            <div id="err" class="err" style="text-align:center"></div>
           </div>
         </div>
       `,
@@ -448,8 +463,9 @@ function getSignedResult(id) {
 app.get('/api/rng', async (req, res) => {
   const min = Number(req.query.min);
   const max = Number(req.query.max);
+  const count = Math.max(1, Math.min(10, Number(req.query.count || 1)));
 
-  if (!Number.isInteger(min) || !Number.isInteger(max) || max < min) {
+  if (!Number.isInteger(min) || !Number.isInteger(max) || max < min || !Number.isInteger(count)) {
     return res.status(400).json({ ok: false, error: 'Invalid min/max' });
   }
 
@@ -459,7 +475,7 @@ app.get('/api/rng', async (req, res) => {
       method: 'generateSignedIntegers',
       params: {
         apiKey: process.env.RANDOM_ORG_API_KEY,
-        n: 1,
+        n: count,
         min,
         max,
         replacement: true,
@@ -479,7 +495,8 @@ app.get('/api/rng', async (req, res) => {
       return res.status(502).json({ ok: false, error: 'random.org error', detail: j });
     }
 
-    const value = j?.result?.random?.data?.[0];
+    const data = j?.result?.random?.data;
+    const value = data?.[0];
     const random = j?.result?.random;
     const signature = j?.result?.signature;
     if (!Number.isInteger(value) || !random || typeof signature !== 'string') {
@@ -490,6 +507,8 @@ app.get('/api/rng', async (req, res) => {
 
     res.json({
       ok: true,
+      count,
+      values: Array.isArray(data) ? data : [value],
       value,
       min,
       max,
@@ -522,7 +541,10 @@ app.get('/result/:id', (req, res) => {
           <div class="wrap" style="width:100%;max-width:760px">
             <div class="card resultCard">
               <div style="font-weight:800;font-size:18px">Result</div>
-              <div class="numBox" style="margin:18px auto 6px auto"><div class="num">${String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</div></div>
+              ${Array.isArray(stored.random?.data) && stored.random.data.length > 1
+                ? `<ol class="rankList">${stored.random.data.map((v,i)=>`<li><span class="idx">${i+1}.</span><span class="val">${String(v).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</span></li>`).join('')}</ol>`
+                : `<div class="numBox" style="margin:18px auto 6px auto"><div class="num">${String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</div></div>`
+              }
               <div class="small">Generated by random.org (signed)</div>
               <div class="btnRow">
                 <a class="btn btnPrimary" href="/verify/${encodeURIComponent(id)}">Verify</a>
