@@ -113,14 +113,18 @@ app.get('/login', (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Login</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:520px}
+    body{padding-top:72px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:520px}
     .card{border:1px solid #ddd;border-radius:10px;padding:18px}
     input{padding:10px;font-size:16px;width:100%}
     button{padding:10px 14px;font-size:16px;cursor:pointer;margin-top:12px}
     .err{color:#b00020;margin-top:10px}
+    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.90);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);padding:12px 0;margin:-40px -40px 24px -40px}
+    .topbarInner{max-width:520px;margin:0 auto;padding:0 40px;display:flex;align-items:center;justify-content:space-between}
+    .brand{font-weight:900;letter-spacing:0.2px}
   </style>
 </head>
 <body>
+  <div class="topbar"><div class="topbarInner"><div class="brand">Random Number Generator</div></div></div>
   <h1>Enter passphrase</h1>
   <div class="card">
     <form method="post" action="/login">
@@ -129,6 +133,7 @@ app.get('/login', (req, res) => {
       ${err ? `<div class="err">${err.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</div>` : ''}
     </form>
   </div>
+<script src="/assets/result.js" defer></script>
 </body>
 </html>`);
 });
@@ -188,65 +193,18 @@ app.use(requireAuth);
 // Static JS assets (keeps CSP happy)
 app.get('/assets/app.js', (req, res) => {
   res.type('application/javascript').send(`
+
   const $ = (id) => document.getElementById(id);
-
   function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
-
-  function confettiBurst() {
-    const canvas = document.createElement('canvas');
-    canvas.className = 'confetti';
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    document.body.appendChild(canvas);
-    const ctx = canvas.getContext('2d');
-
-    const colors = ['#6a5acd','#00bcd4','#ff9800','#e91e63','#4caf50','#ffc107'];
-    const parts = Array.from({length: 120}).map(() => ({
-      x: canvas.width * 0.5,
-      y: canvas.height * 0.2,
-      vx: (Math.random() - 0.5) * 10,
-      vy: Math.random() * -8 - 6,
-      g: 0.25 + Math.random() * 0.12,
-      size: 4 + Math.random() * 5,
-      color: colors[(Math.random() * colors.length) | 0],
-      rot: Math.random() * Math.PI,
-      vr: (Math.random() - 0.5) * 0.3
-    }));
-
-    const start = performance.now();
-    function frame(t){
-      const dt = (t - start);
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      for (const p of parts) {
-        p.vy += p.g;
-        p.x += p.vx;
-        p.y += p.vy;
-        p.rot += p.vr;
-        ctx.save();
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.rot);
-        ctx.fillStyle = p.color;
-        ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
-        ctx.restore();
-      }
-      if (dt < 1400) requestAnimationFrame(frame);
-      else canvas.remove();
-    }
-    requestAnimationFrame(frame);
-  }
 
   async function runGenerate(){
     const btn = $('go');
     const barWrap = $('barWrap');
     const bar = $('bar');
     const status = $('status');
-    const out = $('out');
     const err = $('err');
-    const verify = $('verify');
 
     err.textContent = '';
-    verify.textContent = '';
-    out.textContent = '—';
 
     const min = Number($('min').value);
     const max = Number($('max').value);
@@ -257,7 +215,6 @@ app.get('/assets/app.js', (req, res) => {
     barWrap.style.display = 'block';
     bar.style.width = '0%';
 
-    // Start API call immediately, but keep a 3s “ceremony”.
     const fetchPromise = fetch('/api/rng?min=' + encodeURIComponent(min) + '&max=' + encodeURIComponent(max))
       .then(async r => {
         const j = await r.json().catch(() => null);
@@ -277,26 +234,11 @@ app.get('/assets/app.js', (req, res) => {
     try {
       const [j] = await Promise.all([fetchPromise, sleep(duration)]);
       status.textContent = 'Done';
-
-      // If backend provides a dedicated result page, use it.
       if (j.resultUrl) {
-        confettiBurst();
-        await sleep(250);
         window.location.href = j.resultUrl;
         return;
       }
-
-      out.textContent = String(j.value);
-      out.classList.remove('pop');
-      // force reflow
-      void out.offsetWidth;
-      out.classList.add('pop');
-
-      if (j.verifyUrl) {
-        verify.innerHTML = '<a href="' + j.verifyUrl + '">Verify on random.org</a>';
-      }
-
-      confettiBurst();
+      err.textContent = 'Missing resultUrl from server.';
     } catch (e) {
       err.textContent = e.message || String(e);
     } finally {
@@ -332,6 +274,59 @@ app.get('/assets/verify.js', (req, res) => {
 `);
 });
 
+
+app.get('/assets/result.js', (req, res) => {
+  res.type('application/javascript').send(`
+  (function(){
+    function confettiBurst(){
+      const canvas = document.createElement('canvas');
+      canvas.className = 'confetti';
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      document.body.appendChild(canvas);
+      const ctx = canvas.getContext('2d');
+      const colors = ['#6a5acd','#00bcd4','#ff9800','#e91e63','#4caf50','#ffc107'];
+      const parts = Array.from({length: 160}).map(() => ({
+        x: canvas.width * 0.5,
+        y: canvas.height * 0.25,
+        vx: (Math.random() - 0.5) * 12,
+        vy: Math.random() * -9 - 7,
+        g: 0.28 + Math.random() * 0.14,
+        size: 4 + Math.random() * 6,
+        color: colors[(Math.random() * colors.length) | 0],
+        rot: Math.random() * Math.PI,
+        vr: (Math.random() - 0.5) * 0.35
+      }));
+      const start = performance.now();
+      function frame(t){
+        const dt = (t - start);
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        for (const p of parts) {
+          p.vy += p.g;
+          p.x += p.vx;
+          p.y += p.vy;
+          p.rot += p.vr;
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
+          ctx.restore();
+        }
+        if (dt < 1600) requestAnimationFrame(frame);
+        else canvas.remove();
+      }
+      requestAnimationFrame(frame);
+    }
+
+    window.addEventListener('load', () => {
+      // small delay so the number is visible first
+      setTimeout(confettiBurst, 150);
+    });
+  })();
+`);
+});
+
 app.get('/health', (req, res) => {
   res.json({ ok: true, service: 'rng-web' });
 });
@@ -345,7 +340,7 @@ app.get('/', (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RNG</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:720px;
+    body{padding-top:72px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:720px;
       background:
         radial-gradient(900px 280px at 20% 0%, rgba(106,90,205,0.16), transparent 60%),
         radial-gradient(900px 280px at 80% 20%, rgba(0,188,212,0.14), transparent 60%),
@@ -362,7 +357,6 @@ app.get('/', (req, res) => {
       box-shadow: 0 10px 30px rgba(0,0,0,0.06);
     }
     code{background:#f6f6f6;padding:2px 6px;border-radius:6px}
-    #out{font-size:44px;font-weight:900;margin-top:14px;text-align:center;letter-spacing:0.5px;
       padding:14px 12px;border-radius:16px;
       background: linear-gradient(135deg, rgba(106,90,205,0.16), rgba(0,188,212,0.14));
       border: 1px solid rgba(0,0,0,0.06);
@@ -370,17 +364,24 @@ app.get('/', (req, res) => {
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
       transition:transform 180ms ease;
     }
-    .outWrap{display:flex;justify-content:center}
-    #out.pop{transform:scale(1.12)}
     .barWrap{margin-top:14px;height:10px;background:#eee;border-radius:999px;overflow:hidden;display:none}
     .bar{height:100%;width:0%;background:linear-gradient(90deg,#6a5acd,#00bcd4);border-radius:999px}
     .muted{color:#666;font-size:13px;margin-top:8px}
     canvas.confetti{position:fixed;inset:0;pointer-events:none;z-index:9999}
+    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.85);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);padding:12px 0;margin:-40px -40px 24px -40px}
+    .topbarInner{max-width:720px;margin:0 auto;padding:0 40px;display:flex;align-items:center;justify-content:space-between}
+    .brand{font-weight:900;letter-spacing:0.2px}
+    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff}
   </style>
 </head>
 <body>
-  <h1>Random Number Generator</h1>
-  <p><a href="/logout">Logout</a></p>
+  
+  <div class="topbar">
+    <div class="topbarInner">
+      <div class="brand">Random Number Generator</div>
+      <a class="logout" href="/logout">Logout</a>
+    </div>
+  </div>
   <p>Backend uses <code>random.org</code> via their JSON-RPC API.</p>
 
   <div class="card">
@@ -397,14 +398,14 @@ app.get('/', (req, res) => {
         <button id="go">Generate</button>
       </div>
     </div>
-    <div class="outWrap"><div id="out">—</div></div>
-    <div class="barWrap" id="barWrap"><div class="bar" id="bar"></div></div>
+        <div class="barWrap" id="barWrap"><div class="bar" id="bar"></div></div>
     <div class="muted" id="status" style="display:none">Generating…</div>
     <div id="verify" style="margin-top:10px"></div>
     <div id="err" style="color:#b00020;margin-top:8px"></div>
   </div>
 
 <script src="/assets/app.js" defer></script>
+<script src="/assets/result.js" defer></script>
 </body>
 </html>`);
 });
@@ -525,16 +526,27 @@ app.get('/verify/:id', async (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Verify RNG (random.org)</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:860px}
+    body{padding-top:72px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:860px}
     .card{border:1px solid #ddd;border-radius:14px;padding:18px;background:#fff;box-shadow:0 10px 30px rgba(0,0,0,0.06)}
     code{background:#f6f6f6;padding:2px 6px;border-radius:6px}
     textarea{width:100%;min-height:160px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;padding:10px;border-radius:8px;border:1px solid #ddd}
     .qr{border:1px solid #ddd;border-radius:10px;padding:10px;display:inline-block;background:#fff}
     button{padding:8px 12px;font-size:14px;cursor:pointer}
     a{word-break:break-word}
+    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.85);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);padding:12px 0;margin:-40px -40px 24px -40px}
+    .topbarInner{max-width:860px;margin:0 auto;padding:0 40px;display:flex;align-items:center;justify-content:space-between}
+    .brand{font-weight:900;letter-spacing:0.2px}
+    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff}
   </style>
 </head>
 <body>
+  
+  <div class="topbar">
+    <div class="topbarInner">
+      <div class="brand">Random Number Generator</div>
+      <a class="logout" href="/logout">Logout</a>
+    </div>
+  </div>
   <h1>Verification</h1>
 
   <div class="card">
@@ -571,6 +583,7 @@ app.get('/verify/:id', async (req, res) => {
   <p style="margin-top:18px"><a href="/">Back</a></p>
 
 <script src="/assets/verify.js" defer></script>
+<script src="/assets/result.js" defer></script>
 </body>
 </html>`);
 });
@@ -592,7 +605,7 @@ app.get('/result/:id', async (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Result</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+    body{padding-top:72px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
       background:
         radial-gradient(900px 280px at 20% 0%, rgba(106,90,205,0.18), transparent 60%),
         radial-gradient(900px 280px at 80% 20%, rgba(0,188,212,0.16), transparent 60%),
@@ -615,9 +628,21 @@ app.get('/result/:id', async (req, res) => {
     a.primary{background:#111;color:#fff;border-color:#111}
     a.ghost{background:#fff;color:#111}
     .small{color:#666;font-size:13px;margin-top:10px}
+    canvas.confetti{position:fixed;inset:0;pointer-events:none;z-index:9999}
+    .topbar{position:fixed;top:0;left:0;right:0;background:rgba(255,255,255,0.85);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);padding:12px 0;z-index:1000}
+    .topbarInner{max-width:760px;margin:0 auto;padding:0 20px;display:flex;align-items:center;justify-content:space-between}
+    .brand{font-weight:900;letter-spacing:0.2px}
+    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff}
   </style>
 </head>
 <body>
+  
+  <div class="topbar">
+    <div class="topbarInner">
+      <div class="brand">Random Number Generator</div>
+      <a class="logout" href="/logout">Logout</a>
+    </div>
+  </div>
   <div class="wrap">
     <div class="card">
       <div style="font-weight:800;font-size:18px">Result</div>
@@ -630,6 +655,7 @@ app.get('/result/:id', async (req, res) => {
       <div style="margin-top:14px"><a href="/logout">Logout</a></div>
     </div>
   </div>
+<script src="/assets/result.js" defer></script>
 </body>
 </html>`);
 });
