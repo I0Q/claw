@@ -1,7 +1,9 @@
 import express from 'express';
 import crypto from 'crypto';
+import QRCode from 'qrcode';
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '64kb' }));
 
 app.get('/health', (req, res) => {
@@ -207,8 +209,20 @@ app.get('/api/verify/:id', async (req, res) => {
   }
 });
 
-app.get('/verify/:id', (req, res) => {
+app.get('/verify/:id', async (req, res) => {
   const id = String(req.params.id || '');
+  const stored = getSignedResult(id);
+  if (!stored) {
+    return res.status(404).type('html').send('<h1>Expired</h1><p>This verification link is unknown or has expired.</p>');
+  }
+
+  const verifyPageUrl = `${req.protocol}://${req.get('host')}/verify/${encodeURIComponent(id)}`;
+  const qr = await QRCode.toDataURL(verifyPageUrl, { margin: 1, width: 240 });
+
+  // Keep the payload copy/paste friendly.
+  const randomJson = JSON.stringify(stored.random, null, 2);
+  const signature = String(stored.signature);
+
   res.type('html').send(`<!doctype html>
 <html lang="en">
 <head>
@@ -216,35 +230,90 @@ app.get('/verify/:id', (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Verify RNG (random.org)</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:720px}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:860px}
     .card{border:1px solid #ddd;border-radius:10px;padding:18px}
     .ok{color:#0b7a0b;font-weight:700}
     .bad{color:#b00020;font-weight:700}
     code{background:#f6f6f6;padding:2px 6px;border-radius:6px}
+    textarea{width:100%;min-height:160px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;padding:10px;border-radius:8px;border:1px solid #ddd}
+    .row{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+    .qr{border:1px solid #ddd;border-radius:10px;padding:10px;display:inline-block;background:#fff}
+    button{padding:8px 12px;font-size:14px;cursor:pointer}
+    a{word-break:break-word}
   </style>
 </head>
 <body>
   <h1>Verification</h1>
-  <p>This checks the <code>random</code> object + <code>signature</code> using random.org’s <code>verifySignature</code>.</p>
-  <div class="card" id="card">Checking…</div>
+
+  <div class="row">
+    <div class="qr">
+      <div style="font-weight:700;margin-bottom:8px">Scan to view this proof</div>
+      <img alt="QR" src="${qr}" width="240" height="240" />
+      <div style="margin-top:8px;font-size:12px">${verifyPageUrl}</div>
+    </div>
+
+    <div style="flex:1;min-width:280px">
+      <p>This page checks the <code>random</code> object + <code>signature</code> using random.org’s <code>verifySignature</code> API.</p>
+      <div class="card" id="card">Checking…</div>
+      <p style="margin-top:12px">
+        Also verify yourself on random.org (public form):
+        <a href="https://api.random.org/signatures/form" target="_blank" rel="noreferrer">https://api.random.org/signatures/form</a>
+      </p>
+    </div>
+  </div>
+
+  <h2 style="margin-top:26px">Verify on random.org (manual)</h2>
+  <ol>
+    <li>Open the random.org verification form link above.</li>
+    <li>Paste the <b>random</b> JSON and the <b>signature</b> from below.</li>
+    <li>Submit — it should say the signature is valid.</li>
+  </ol>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="font-weight:700">random (JSON)</div>
+      <button type="button" onclick="copyText('random')">Copy random</button>
+    </div>
+    <textarea id="random" readonly>${randomJson.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</textarea>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="font-weight:700">signature</div>
+      <button type="button" onclick="copyText('signature')">Copy signature</button>
+    </div>
+    <textarea id="signature" readonly>${signature.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</textarea>
+  </div>
+
   <p style="margin-top:18px"><a href="/">Back</a></p>
 
 <script>
-(async () => {
-  const el = document.getElementById('card');
-  try {
-    const r = await fetch('/api/verify/${id}');
-    const j = await r.json();
-    if (!r.ok) throw new Error(j?.error || 'verify failed');
-    if (j.authenticity) {
-      el.innerHTML = '<div class="ok">VALID</div><div>random.org verified this result.</div>';
-    } else {
-      el.innerHTML = '<div class="bad">INVALID</div><div>random.org did not verify this result.</div>';
+  async function copyText(id) {
+    const el = document.getElementById(id);
+    try {
+      await navigator.clipboard.writeText(el.value);
+    } catch {
+      el.select();
+      document.execCommand('copy');
+      window.getSelection().removeAllRanges();
     }
-  } catch (e) {
-    el.innerHTML = '<div class="bad">ERROR</div><div>' + (e.message || String(e)) + '</div>';
   }
-})();
+
+  (async () => {
+    const el = document.getElementById('card');
+    try {
+      const r = await fetch('/api/verify/${id}');
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || 'verify failed');
+      if (j.authenticity) {
+        el.innerHTML = '<div class="ok">VALID</div><div>random.org verified this result (via verifySignature).</div>';
+      } else {
+        el.innerHTML = '<div class="bad">INVALID</div><div>random.org did not verify this result.</div>';
+      }
+    } catch (e) {
+      el.innerHTML = '<div class="bad">ERROR</div><div>' + (e.message || String(e)) + '</div>';
+    }
+  })();
 </script>
 </body>
 </html>`);
