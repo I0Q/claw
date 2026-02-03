@@ -33,6 +33,7 @@ app.use(express.json({ limit: '64kb' }));
 // --- Passphrase gate (24h sessions) ---
 // Stored secret is a SHA-256 hex digest (64 chars) in env PASSPHRASE_SHA256.
 const PASSPHRASE_SHA256 = (process.env.PASSPHRASE_SHA256 || '').trim().toLowerCase();
+const DISABLE_PASSPHRASE = String(process.env.DISABLE_PASSPHRASE || '').toLowerCase() === 'true';
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const sessions = new Map();
 
@@ -185,6 +186,7 @@ app.get('/logout', (req, res) => {
 });
 
 function requireAuth(req, res, next) {
+  if (DISABLE_PASSPHRASE) return next();
   if (isAuthed(req)) return next();
   // Allow health checks through.
   if (req.path === '/health') return next();
