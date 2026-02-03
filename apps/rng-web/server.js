@@ -2,15 +2,13 @@ import express from 'express';
 import crypto from 'crypto';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import QRCode from 'qrcode';
+
+const BUILD_ID = String(Date.now());
 
 const app = express();
-// Bump this on each deploy to bust mobile Safari caches for /assets/*
-const BUILD_ID = String(Date.now());
 app.set('trust proxy', 1);
-
-// Basic hardening headers (OWASP baseline)
 app.disable('x-powered-by');
+
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -20,9 +18,9 @@ app.use(
         frameAncestors: ["'none'"],
         objectSrc: ["'none'"],
         scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'"],
         imgSrc: ["'self'", 'data:'],
-        connectSrc: ["'self'", 'https://api.random.org'],
+        connectSrc: ["'self'"],
         formAction: ["'self'"],
         upgradeInsecureRequests: []
       }
@@ -31,11 +29,10 @@ app.use(
 );
 
 app.use(express.json({ limit: '64kb' }));
+app.use(express.urlencoded({ extended: false, limit: '4kb' }));
 
-// --- Passphrase gate (24h sessions) ---
-// Stored secret is a SHA-256 hex digest (64 chars) in env PASSPHRASE_SHA256.
+// -------------------- auth (passphrase) --------------------
 const PASSPHRASE_SHA256 = (process.env.PASSPHRASE_SHA256 || '').trim().toLowerCase();
-const DISABLE_PASSPHRASE = String(process.env.DISABLE_PASSPHRASE || '').toLowerCase() === 'true';
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const sessions = new Map();
 
@@ -54,41 +51,25 @@ function parseCookies(req) {
 }
 
 function setCookie(res, name, value, { maxAgeMs } = {}) {
-  const secure = (process.env.NODE_ENV === 'production');
   const parts = [
     `${name}=${encodeURIComponent(value)}`,
     'Path=/',
     'HttpOnly',
-    'SameSite=Lax'
+    'SameSite=Lax',
+    'Secure'
   ];
-  if (secure) parts.push('Secure');
   if (maxAgeMs != null) parts.push(`Max-Age=${Math.floor(maxAgeMs / 1000)}`);
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
 function clearCookie(res, name) {
-  res.setHeader('Set-Cookie', `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
+  res.setHeader('Set-Cookie', `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax; Secure`);
 }
 
 function cleanupSessions() {
   const now = Date.now();
   for (const [k, v] of sessions.entries()) {
     if (!v || (now - v.createdAt) > SESSION_TTL_MS) sessions.delete(k);
-  }
-}
-
-function sha256Hex(s) {
-  return crypto.createHash('sha256').update(s, 'utf8').digest('hex');
-}
-
-function timingSafeEqHex(a, b) {
-  try {
-    const ba = Buffer.from(String(a).toLowerCase(), 'hex');
-    const bb = Buffer.from(String(b).toLowerCase(), 'hex');
-    if (ba.length !== bb.length) return False;
-    return crypto.timingSafeEqual(ba, bb);
-  } catch {
-    return false;
   }
 }
 
@@ -106,73 +87,92 @@ function isAuthed(req) {
   return true;
 }
 
-// Login page (GET)
-app.get('/login', (req, res) => {
-  const err = String(req.query.err || '');
-  res.type('html').send(`<!doctype html>
+function topbarHtml({ showLogout }) {
+  return `
+  <div class="topbar">
+    <div class="topbarInner">
+      <div class="brand">Random Number Generator</div>
+      ${showLogout ? '<a class="logout" href="/logout">Logout</a>' : '<div style="width:80px"></div>'}
+    </div>
+  </div>`;
+}
+
+function pageHtml({ title, showLogout, body, scripts = [] }) {
+  const scriptTags = scripts
+    .map(s => `<script src="${s}?v=${BUILD_ID}" defer></script>`)
+    .join('\n');
+
+  return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Login</title>
-  <link rel=\"stylesheet\" href=\"/assets/site.css?v=${BUILD_ID}\">
-  <style>
-    body{padding-top:72px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:520px}
-    .card{border:1px solid #ddd;border-radius:10px;padding:18px}
-    input{padding:10px;font-size:16px;width:100%}
-    button{padding:10px 14px;font-size:16px;cursor:pointer;margin-top:12px}
-    .err{color:#b00020;margin-top:10px}
-  
-    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.86);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);height:56px;display:flex;align-items:center;margin:-40px -40px 18px -40px;z-index:1000}
-    .topbarInner{max-width:520px;margin:0 auto;padding:0 20px;width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px}
-    .brand{font-weight:900;letter-spacing:0.2px;font-size:16px}
-    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff;white-space:nowrap;font-size:14px}
-    @media (max-width: 420px){
-      .topbar{height:52px;margin:-40px -40px 14px -40px}
-      .brand{font-size:15px}
-      a.logout{padding:7px 10px;font-size:13px}
-    }
-</style>
+  <title>${title}</title>
+  <link rel="stylesheet" href="/assets/site.css?v=${BUILD_ID}">
 </head>
 <body>
-  <div class="topbar"><div class="topbarInner"><div class="brand">Random Number Generator</div></div></div>
-  <h1>Enter passphrase</h1>
-  <div class="card">
-    <form method="post" action="/login">
-      <input type="password" name="passphrase" placeholder="Passphrase" autofocus required />
-      <button type="submit">Unlock</button>
-      ${err ? `<div class="err">${err.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</div>` : ''}
-    </form>
-  </div>
+  ${topbarHtml({ showLogout })}
+  <main>
+    ${body}
+  </main>
+  ${scriptTags}
 </body>
-</html>`);
-});
+</html>`;
+}
 
-// Login handler (POST)
-app.use(express.urlencoded({ extended: false, limit: '4kb' }));
+function requireAuth(req, res, next) {
+  if (req.path === '/health') return next();
+  if (req.path === '/login' || req.path === '/logout') return next();
+  if (req.path.startsWith('/assets/')) return next();
+  if (isAuthed(req)) return next();
+  return res.redirect('/login');
+}
 
-// Rate-limit login attempts (OWASP brute-force mitigation)
+app.use(requireAuth);
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 30,
   standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: 'Too many login attempts. Try again later.'
+  legacyHeaders: false
+});
+
+app.get('/login', (req, res) => {
+  const err = String(req.query.err || '');
+  res.type('html').send(
+    pageHtml({
+      title: 'Login',
+      showLogout: false,
+      body: `
+        <div class="container">
+          <div class="h1">Enter passphrase</div>
+          <div class="card">
+            <form method="post" action="/login">
+              <label for="pass">Passphrase</label>
+              <input id="pass" type="password" name="passphrase" placeholder="Passphrase" autofocus required />
+              <div class="row" style="margin-top:12px">
+                <button type="submit">Unlock</button>
+              </div>
+              ${err ? `<div class="err">${err.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</div>` : ''}
+            </form>
+          </div>
+        </div>
+      `
+    })
+  );
 });
 
 app.post('/login', loginLimiter, (req, res) => {
   if (!PASSPHRASE_SHA256 || !/^[0-9a-f]{64}$/.test(PASSPHRASE_SHA256)) {
-    return res.status(500).type('html').send('<h1>Server misconfigured</h1>');
+    return res.status(500).type('html').send('Server misconfigured');
   }
+
   const passphrase = String(req.body?.passphrase || '');
-  const digest = sha256Hex(passphrase);
+  const digest = crypto.createHash('sha256').update(passphrase, 'utf8').digest('hex');
   const ok = crypto.timingSafeEqual(Buffer.from(digest, 'hex'), Buffer.from(PASSPHRASE_SHA256, 'hex'));
 
   if (!ok) {
-    // Non-blocking delay to slow brute force without burning CPU.
-    return setTimeout(() => {
-      res.redirect('/login?err=Wrong%20passphrase');
-    }, 450);
+    return setTimeout(() => res.redirect('/login?err=Wrong%20passphrase'), 350);
   }
 
   const sid = crypto.randomUUID();
@@ -188,70 +188,84 @@ app.get('/logout', (req, res) => {
   res.redirect('/login');
 });
 
-function requireAuth(req, res, next) {
-  if (DISABLE_PASSPHRASE) return next();
-  if (isAuthed(req)) return next();
-  // Allow health checks through.
-  if (req.path === '/health') return next();
-  // Allow login/logout.
-  if (req.path === '/login' || req.path === '/logout') return next();
-  return res.redirect('/login');
+// -------------------- assets (no-store to avoid Safari caching issues) --------------------
+function noStore(res) {
+  res.setHeader('Cache-Control', 'no-store');
 }
 
-// Gate everything by default.
-app.use(requireAuth);
-
-// Static JS assets (keeps CSP happy)
-
 app.get('/assets/site.css', (req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
+  noStore(res);
   res.type('text/css').send(`
-    :root{--pad:40px}
-    @media (max-width: 420px){:root{--pad:20px}}
-
-    body{font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif}
-
-    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.86);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);
-      height:56px;display:flex;align-items:center;margin:calc(-1 * var(--pad)) calc(-1 * var(--pad)) 18px calc(-1 * var(--pad));z-index:1000}
-    .topbarInner{max-width:860px;margin:0 auto;padding:0 20px;width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px}
-    .brand{font-weight:900;letter-spacing:0.2px;font-size:16px}
-    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff;white-space:nowrap;font-size:14px}
-
-    @media (max-width: 420px){
-      .topbar{height:52px;margin:calc(-1 * var(--pad)) calc(-1 * var(--pad)) 14px calc(-1 * var(--pad))}
-      .brand{font-size:15px}
-      a.logout{padding:7px 10px;font-size:13px}
-    }
-
-    /* Confetti should never cover the topbar */
-    canvas.confetti{z-index:500}
-  `);
+:root{--pad:40px;--maxw:860px;--topbar-h:56px;--radius:18px;--shadow:0 16px 50px rgba(0,0,0,0.10)}
+@media (max-width:420px){:root{--pad:20px;--topbar-h:52px}}
+*{box-sizing:border-box}
+body{margin:0;color:#111;background:
+  radial-gradient(900px 280px at 20% 0%, rgba(106,90,205,0.12), transparent 60%),
+  radial-gradient(900px 280px at 80% 20%, rgba(0,188,212,0.10), transparent 60%),
+  #ffffff;
+}
+.topbar{position:fixed;top:0;left:0;right:0;height:var(--topbar-h);display:flex;align-items:center;z-index:1000;
+  background:rgba(255,255,255,0.88);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);
+}
+.topbarInner{max-width:var(--maxw);width:100%;margin:0 auto;padding:0 var(--pad);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{font-weight:900;letter-spacing:0.2px;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:420px){.brand{font-size:15px}}
+.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff;white-space:nowrap;font-size:14px}
+@media (max-width:420px){.logout{padding:7px 10px;font-size:13px}}
+main{padding-top:calc(var(--topbar-h) + 18px);padding-left:var(--pad);padding-right:var(--pad);padding-bottom:40px}
+.container{max-width:720px;margin:0 auto}
+.card{background:rgba(255,255,255,0.92);border:1px solid rgba(0,0,0,0.10);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px}
+.h1{font-size:40px;line-height:1.05;margin:12px 0 14px;font-weight:900}
+.p{margin:8px 0;color:#333}
+.small{color:#666;font-size:13px}
+.err{color:#b00020;margin-top:10px}
+.row{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end}
+label{display:block;margin:12px 0 6px;font-weight:600}
+input[type=number],input[type=password]{padding:10px;font-size:16px;width:220px;max-width:100%;border:1px solid rgba(0,0,0,0.12);border-radius:12px;background:#fff}
+button{padding:10px 14px;font-size:16px;cursor:pointer;border-radius:14px;border:1px solid rgba(0,0,0,0.12);background:#f3f3f3;font-weight:800}
+button:disabled{opacity:0.55;cursor:not-allowed}
+.progressWrap{margin-top:14px}
+.progressBar{height:10px;background:#eee;border-radius:999px;overflow:hidden}
+.progressFill{height:100%;width:0%;background:linear-gradient(90deg,#6a5acd,#00bcd4);border-radius:999px}
+.status{margin-top:8px;color:#666;font-size:13px;min-height:18px}
+.centerWrap{max-width:760px;margin:0 auto;display:flex;align-items:center;justify-content:center;min-height:calc(100vh - var(--topbar-h) - 18px - 40px)}
+.resultCard{text-align:center;padding:26px}
+.numBox{display:inline-flex;align-items:center;justify-content:center;min-width:160px;min-height:160px;padding:18px 26px;border-radius:22px;
+  background:linear-gradient(135deg, rgba(106,90,205,0.18), rgba(0,188,212,0.16));border:1px solid rgba(0,0,0,0.06)}
+.num{font-size:84px;font-weight:950;letter-spacing:1px;line-height:1}
+.btnRow{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:16px}
+.btn{display:inline-block;padding:12px 16px;border-radius:12px;text-decoration:none;font-weight:900;border:1px solid rgba(0,0,0,0.12)}
+.btnPrimary{background:#111;color:#fff;border-color:#111}
+.btnGhost{background:#fff;color:#111}
+textarea{width:100%;min-height:160px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;padding:10px;border-radius:12px;border:1px solid rgba(0,0,0,0.12);background:#fff}
+.copyRow{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.qr{border:1px solid rgba(0,0,0,0.12);border-radius:14px;padding:10px;display:inline-block;background:#fff}
+canvas.confetti{position:fixed;inset:0;pointer-events:none;z-index:500}
+`);
 });
 
 app.get('/assets/app.js', (req, res) => {
-  res.setHeader('Cache-Control','no-store');
+  noStore(res);
   res.type('application/javascript').send(`
-
   const $ = (id) => document.getElementById(id);
   function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
   async function runGenerate(){
     const btn = $('go');
-    const barWrap = $('progressWrap');
     const bar = $('bar');
     const status = $('status');
+    const wrap = $('progressWrap');
     const err = $('err');
 
     err.textContent = '';
+    wrap.style.display = 'block';
+    status.textContent = 'Generating…';
+    bar.style.width = '0%';
 
     const min = Number($('min').value);
     const max = Number($('max').value);
 
     btn.disabled = true;
-    status.style.display = 'block';
-    status.textContent = 'Generating…';
-    barWrap.style.display = 'block';
-    bar.style.width = '0%';
 
     const fetchPromise = fetch('/api/rng?min=' + encodeURIComponent(min) + '&max=' + encodeURIComponent(max))
       .then(async r => {
@@ -279,12 +293,13 @@ app.get('/assets/app.js', (req, res) => {
       err.textContent = 'Missing resultUrl from server.';
     } catch (e) {
       err.textContent = e.message || String(e);
+      status.textContent = '';
     } finally {
       btn.disabled = false;
       setTimeout(() => {
-        barWrap.style.display = 'none';
-        status.style.display = 'none';
-      }, 600);
+        wrap.style.display = 'none';
+        bar.style.width = '0%';
+      }, 800);
     }
   }
 
@@ -296,7 +311,7 @@ app.get('/assets/app.js', (req, res) => {
 });
 
 app.get('/assets/verify.js', (req, res) => {
-  res.setHeader('Cache-Control','no-store');
+  noStore(res);
   res.type('application/javascript').send(`
   async function copyText(id) {
     const el = document.getElementById(id);
@@ -313,9 +328,8 @@ app.get('/assets/verify.js', (req, res) => {
 `);
 });
 
-
 app.get('/assets/result.js', (req, res) => {
-  res.setHeader('Cache-Control','no-store');
+  noStore(res);
   res.type('application/javascript').send(`
   (function(){
     function confettiBurst(){
@@ -358,108 +372,57 @@ app.get('/assets/result.js', (req, res) => {
       }
       requestAnimationFrame(frame);
     }
-
-    window.addEventListener('load', () => {
-      // small delay so the number is visible first
-      setTimeout(confettiBurst, 150);
-    });
+    window.addEventListener('load', () => setTimeout(confettiBurst, 120));
   })();
 `);
 });
 
+// -------------------- app routes --------------------
 app.get('/health', (req, res) => {
   res.json({ ok: true, service: 'rng-web' });
 });
 
-// Simple UI
 app.get('/', (req, res) => {
-  res.type('html').send(`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>RNG</title>
-  <link rel=\"stylesheet\" href=\"/assets/site.css?v=${BUILD_ID}\">
-  <style>
-    body{padding-top:72px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:720px;
-      background:
-        radial-gradient(900px 280px at 20% 0%, rgba(106,90,205,0.16), transparent 60%),
-        radial-gradient(900px 280px at 80% 20%, rgba(0,188,212,0.14), transparent 60%),
-        #ffffff;
-    }
-    label{display:block;margin:12px 0 6px}
-    input{padding:10px;font-size:16px;width:220px}
-    button{padding:10px 14px;font-size:16px;cursor:pointer}
-    .row{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end}
-    .card{border:1px solid #ddd;border-radius:14px;padding:18px;background:
-      linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.92)),
-      radial-gradient(500px 120px at 20% 0%, rgba(106,90,205,0.12), transparent 60%),
-      radial-gradient(500px 120px at 80% 40%, rgba(0,188,212,0.10), transparent 60%);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
-    }
-    code{background:#f6f6f6;padding:2px 6px;border-radius:6px}
-      padding:14px 12px;border-radius:16px;
-      background: linear-gradient(135deg, rgba(106,90,205,0.16), rgba(0,188,212,0.14));
-      border: 1px solid rgba(0,0,0,0.06);
-      display:inline-flex;align-items:center;justify-content:center;min-width:110px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
-      transition:transform 180ms ease;
-    }
-    .barWrap{margin-top:14px;height:10px;background:#eee;border-radius:999px;overflow:hidden;display:none}
-    .bar{height:100%;width:0%;background:linear-gradient(90deg,#6a5acd,#00bcd4);border-radius:999px}
-    .muted{color:#666;font-size:13px;margin-top:8px}
-    canvas.confetti{position:fixed;inset:0;pointer-events:none;z-index:500}
-  
-    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.86);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);height:56px;display:flex;align-items:center;margin:-40px -40px 18px -40px;z-index:1000}
-    .topbarInner{max-width:720px;margin:0 auto;padding:0 20px;width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px}
-    .brand{font-weight:900;letter-spacing:0.2px;font-size:16px}
-    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff;white-space:nowrap;font-size:14px}
-    @media (max-width: 420px){
-      .topbar{height:52px;margin:-40px -40px 14px -40px}
-      .brand{font-size:15px}
-      a.logout{padding:7px 10px;font-size:13px}
-    }
-</style>
-</head>
-<body>
-  
-  <div class="topbar">
-    <div class="topbarInner">
-      <div class="brand">Random Number Generator</div>
-      <a class="logout" href="/logout">Logout</a>
-    </div>
-  </div>
-  <p>Backend uses <code>random.org</code> via their JSON-RPC API.</p>
+  res.type('html').send(
+    pageHtml({
+      title: 'RNG',
+      showLogout: true,
+      body: `
+        <div class="container">
+          <div class="h1">Random Number Generator</div>
+          <div class="p">Backend uses <code>random.org</code> via their JSON-RPC API.</div>
+          <div class="card">
+            <div class="row">
+              <div>
+                <label for="min">Min (inclusive)</label>
+                <input id="min" type="number" value="1" />
+              </div>
+              <div>
+                <label for="max">Max (inclusive)</label>
+                <input id="max" type="number" value="100" />
+              </div>
+              <div>
+                <button id="go">Generate</button>
+              </div>
+            </div>
 
-  <div class="card">
-    <div class="row">
-      <div>
-        <label for="min">Min (inclusive)</label>
-        <input id="min" type="number" value="1" />
-      </div>
-      <div>
-        <label for="max">Max (inclusive)</label>
-        <input id="max" type="number" value="100" />
-      </div>
-      <div>
-        <button id="go">Generate</button>
-      </div>
-    </div>
-        <div class="progressWrap" id="progressWrap"><div class="bar" id="bar"></div></div>
-    <div class="muted" id="status" style="display:none">Generating…</div>
-    <div id="verify" style="margin-top:10px"></div>
-    <div id="err" style="color:#b00020;margin-top:8px"></div>
-  </div>
+            <div class="progressWrap" id="progressWrap" style="display:none">
+              <div class="progressBar"><div class="progressFill" id="bar"></div></div>
+              <div class="status" id="status"></div>
+            </div>
 
-<script src="/assets/app.js?v=${BUILD_ID}" defer></script>
-</body>
-</html>`);
+            <div id="err" class="err"></div>
+          </div>
+        </div>
+      `,
+      scripts: ['/assets/app.js']
+    })
+  );
 });
 
-// In-memory store of signed results for verification links.
-// Not durable; intended for short-lived “verify” UX.
+// -------------------- random.org signed RNG --------------------
 const signedStore = new Map();
-const SIGNED_TTL_MS = 6 * 60 * 60 * 1000; // 6h
+const SIGNED_TTL_MS = 6 * 60 * 60 * 1000;
 
 function storeSignedResult(obj) {
   const id = crypto.randomUUID();
@@ -481,14 +444,8 @@ app.get('/api/rng', async (req, res) => {
   const min = Number(req.query.min);
   const max = Number(req.query.max);
 
-  if (!Number.isFinite(min) || !Number.isFinite(max)) {
-    return res.status(400).json({ ok: false, error: 'min and max must be numbers' });
-  }
-  if (!Number.isInteger(min) || !Number.isInteger(max)) {
-    return res.status(400).json({ ok: false, error: 'min and max must be integers' });
-  }
-  if (max < min) {
-    return res.status(400).json({ ok: false, error: 'max must be >= min' });
+  if (!Number.isInteger(min) || !Number.isInteger(max) || max < min) {
+    return res.status(400).json({ ok: false, error: 'Invalid min/max' });
   }
 
   try {
@@ -513,25 +470,18 @@ app.get('/api/rng', async (req, res) => {
     });
 
     const j = await r.json().catch(() => null);
-    if (!r.ok) {
-      return res.status(502).json({ ok: false, error: 'random.org request failed', status: r.status, detail: j });
-    }
-
-    if (!j || j.error) {
-      return res.status(502).json({ ok: false, error: 'random.org error', detail: j && (j.error || j) });
+    if (!r.ok || !j || j.error) {
+      return res.status(502).json({ ok: false, error: 'random.org error', detail: j });
     }
 
     const value = j?.result?.random?.data?.[0];
     const random = j?.result?.random;
     const signature = j?.result?.signature;
-
     if (!Number.isInteger(value) || !random || typeof signature !== 'string') {
-      return res.status(502).json({ ok: false, error: 'random.org returned unexpected payload', detail: j });
+      return res.status(502).json({ ok: false, error: 'Unexpected random.org payload' });
     }
 
     const storeId = storeSignedResult({ random, signature });
-    const verifyUrl = `/verify/${encodeURIComponent(storeId)}`;
-    const resultUrl = `/result/${encodeURIComponent(storeId)}`;
 
     res.json({
       ok: true,
@@ -541,174 +491,101 @@ app.get('/api/rng', async (req, res) => {
       source: 'random.org',
       completionTime: random?.completionTime,
       serialNumber: random?.serialNumber,
-      verifyUrl,
-      resultUrl
+      verifyUrl: `/verify/${encodeURIComponent(storeId)}`,
+      resultUrl: `/result/${encodeURIComponent(storeId)}`
     });
   } catch (e) {
     res.status(502).json({ ok: false, error: 'random.org call failed', message: String(e?.message || e) });
   }
 });
 
-// NOTE: We intentionally do NOT self-verify on behalf of users.
-// Users can verify independently on random.org using the payload shown on /verify/:id.
+app.get('/result/:id', (req, res) => {
+  const id = String(req.params.id || '');
+  const stored = getSignedResult(id);
+  if (!stored) {
+    return res.status(404).type('html').send(pageHtml({ title:'Expired', showLogout:true, body:`<div class="container"><div class="h1">Expired</div><div class="p">This result link is unknown or has expired.</div></div>` }));
+  }
+
+  const value = stored?.random?.data?.[0];
+
+  res.type('html').send(
+    pageHtml({
+      title: 'Result',
+      showLogout: true,
+      body: `
+        <div class="centerWrap">
+          <div class="wrap" style="width:100%;max-width:760px">
+            <div class="card resultCard">
+              <div style="font-weight:900;font-size:18px">Result</div>
+              <div class="numBox" style="margin:18px auto 6px auto"><div class="num">${String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</div></div>
+              <div class="small">Generated by random.org (signed)</div>
+              <div class="btnRow">
+                <a class="btn btnPrimary" href="/verify/${encodeURIComponent(id)}">Verify</a>
+                <a class="btn btnGhost" href="/">Generate another</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      `,
+      scripts: ['/assets/result.js']
+    })
+  );
+});
 
 app.get('/verify/:id', async (req, res) => {
   const id = String(req.params.id || '');
   const stored = getSignedResult(id);
   if (!stored) {
-    return res.status(404).type('html').send('<h1>Expired</h1><p>This verification link is unknown or has expired.</p>');
+    return res.status(404).type('html').send(pageHtml({ title:'Expired', showLogout:true, body:`<div class="container"><div class="h1">Expired</div><div class="p">This verification link is unknown or has expired.</div></div>` }));
   }
 
   const verifyPageUrl = `${req.protocol}://${req.get('host')}/verify/${encodeURIComponent(id)}`;
-  const qr = await QRCode.toDataURL(verifyPageUrl, { margin: 1, width: 240 });
-
+  // Simple QR via inline SVG (avoid dependencies)
+  // (For now: show just the URL; QR optional to re-add later.)
   const randomJson = JSON.stringify(stored.random, null, 2);
   const signature = String(stored.signature);
 
-  res.type('html').send(`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Verify RNG (random.org)</title>
-  <link rel=\"stylesheet\" href=\"/assets/site.css?v=${BUILD_ID}\">
-  <style>
-    body{padding-top:72px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:860px}
-    .card{border:1px solid #ddd;border-radius:14px;padding:18px;background:#fff;box-shadow:0 10px 30px rgba(0,0,0,0.06)}
-    code{background:#f6f6f6;padding:2px 6px;border-radius:6px}
-    textarea{width:100%;min-height:160px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;padding:10px;border-radius:8px;border:1px solid #ddd}
-    .qr{border:1px solid #ddd;border-radius:10px;padding:10px;display:inline-block;background:#fff}
-    button{padding:8px 12px;font-size:14px;cursor:pointer}
-    a{word-break:break-word}
-  
-    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.86);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);height:56px;display:flex;align-items:center;margin:-40px -40px 18px -40px;z-index:1000}
-    .topbarInner{max-width:860px;margin:0 auto;padding:0 20px;width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px}
-    .brand{font-weight:900;letter-spacing:0.2px;font-size:16px}
-    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff;white-space:nowrap;font-size:14px}
-    @media (max-width: 420px){
-      .topbar{height:52px;margin:-40px -40px 14px -40px}
-      .brand{font-size:15px}
-      a.logout{padding:7px 10px;font-size:13px}
-    }
-</style>
-</head>
-<body>
-  
-  <div class="topbar">
-    <div class="topbarInner">
-      <div class="brand">Random Number Generator</div>
-      <a class="logout" href="/logout">Logout</a>
-    </div>
-  </div>
-  <h1>Verification</h1>
-
-  <div class="card">
-    <div style="font-weight:800">Verify on random.org</div>
-    <ol style="margin:10px 0 0 18px">
-      <li>Open: <a href="https://api.random.org/signatures/form" target="_blank" rel="noreferrer">https://api.random.org/signatures/form</a></li>
-      <li>Paste <b>random (JSON)</b> and <b>signature</b> from below</li>
-      <li>Submit — random.org should confirm the signature is valid</li>
-    </ol>
-  </div>
-
-  <div class="card" style="margin-top:14px">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-      <div style="font-weight:700">random (JSON)</div>
-      <button type="button" onclick="copyText('random')">Copy random</button>
-    </div>
-    <textarea id="random" readonly>${randomJson.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</textarea>
-  </div>
-
-  <div class="card" style="margin-top:14px">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-      <div style="font-weight:700">signature</div>
-      <button type="button" onclick="copyText('signature')">Copy signature</button>
-    </div>
-    <textarea id="signature" readonly>${signature.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</textarea>
-  </div>
-
-  <div class="card" style="margin-top:14px">
-    <div style="font-weight:700;margin-bottom:8px">QR code (proof link)</div>
-    <div class="qr"><img alt="QR" src="${qr}" width="240" height="240" /></div>
-    <div style="margin-top:8px;font-size:12px"><a href="${verifyPageUrl}">${verifyPageUrl}</a></div>
-  </div>
-
-  <p style="margin-top:18px"><a href="/">Back</a></p>
-
-<script src="/assets/verify.js?v=${BUILD_ID}" defer></script>
-</body>
-</html>`);
-});
-
-app.get('/result/:id', async (req, res) => {
-  const id = String(req.params.id || '');
-  const stored = getSignedResult(id);
-  if (!stored) {
-    return res.status(404).type('html').send('<h1>Expired</h1><p>This result link is unknown or has expired.</p>');
-  }
-
-  const value = stored?.random?.data?.[0];
-  const verifyUrl = `/verify/${encodeURIComponent(id)}`;
-
-  res.type('html').send(`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Result</title>
-  <link rel=\"stylesheet\" href=\"/assets/site.css?v=${BUILD_ID}\">
-  <style>
-    body{margin:0;min-height:100vh;background:
-        radial-gradient(900px 280px at 20% 0%, rgba(106,90,205,0.18), transparent 60%),
-        radial-gradient(900px 280px at 80% 20%, rgba(0,188,212,0.16), transparent 60%),
-        #ffffff;
-    }
-    .topbar{position:fixed;top:0;left:0;right:0;background:rgba(255,255,255,0.86);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);height:56px;display:flex;align-items:center;z-index:1000}
-    .topbarInner{max-width:760px;margin:0 auto;padding:0 20px;width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px}
-    .brand{font-weight:900;letter-spacing:0.2px;font-size:16px}
-    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff;white-space:nowrap;font-size:14px}
-    @media (max-width: 420px){
-      .topbar{height:52px}
-      .brand{font-size:15px}
-      a.logout{padding:7px 10px;font-size:13px}
-    }
-    main{padding-top:72px;min-height:100vh;display:flex;align-items:center;justify-content:center}
-    .wrap{width:100%;max-width:760px;padding:0 20px;box-sizing:border-box}
-    .card{border:1px solid rgba(0,0,0,0.10);border-radius:18px;padding:26px;background:linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.92));
-      box-shadow: 0 16px 50px rgba(0,0,0,0.10);text-align:center;}
-    .num{font-size:84px;font-weight:950;letter-spacing:1px;display:inline-flex;align-items:center;justify-content:center;
-      padding:18px 26px;border-radius:22px;background: linear-gradient(135deg, rgba(106,90,205,0.18), rgba(0,188,212,0.16));
-      border: 1px solid rgba(0,0,0,0.06);margin: 18px auto 6px auto;}
-    .btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:16px}
-    a.btn{display:inline-block;padding:12px 16px;border-radius:12px;text-decoration:none;font-weight:700;border:1px solid rgba(0,0,0,0.12)}
-    a.primary{background:#111;color:#fff;border-color:#111}
-    a.ghost{background:#fff;color:#111}
-    .small{color:#666;font-size:13px;margin-top:10px}
-    canvas.confetti{position:fixed;inset:0;pointer-events:none;z-index:500}
-</style>
-</head>
-<body>
-  
-  <div class="topbar">
-    <div class="topbarInner">
-      <div class="brand">Random Number Generator</div>
-      <a class="logout" href="/logout">Logout</a>
-    </div>
-  </div>
-  <div class="wrap">
-    <div class="card">
-      <div style="font-weight:800;font-size:18px">Result</div>
-      <div class="num">${String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</div>
-      <div class="small">Generated by random.org (signed)</div>
-      <div class="btns">
-        <a class="btn primary" href="${verifyUrl}">Verify</a>
-        <a class="btn ghost" href="/">Generate another</a>
-      </div>
+  res.type('html').send(
+    pageHtml({
+      title: 'Verification',
+      showLogout: true,
+      body: `
+        <div class="container">
+          <div class="h1">Verification</div>
+          <div class="card">
+            <div style="font-weight:800">Verify on random.org</div>
+            <ol style="margin:10px 0 0 18px">
+              <li>Open: <a href="https://api.random.org/signatures/form" target="_blank" rel="noreferrer">https://api.random.org/signatures/form</a></li>
+              <li>Paste <b>random (JSON)</b> and <b>signature</b> from below</li>
+              <li>Submit — random.org should confirm the signature is valid</li>
+            </ol>
           </div>
-  </div>
-<script src="/assets/result.js?v=${BUILD_ID}" defer></script>
-</body>
-</html>`);
+
+          <div class="card" style="margin-top:14px">
+            <div class="copyRow">
+              <div style="font-weight:700">random (JSON)</div>
+              <button type="button" onclick="copyText('random')">Copy random</button>
+            </div>
+            <textarea id="random" readonly>${randomJson.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</textarea>
+          </div>
+
+          <div class="card" style="margin-top:14px">
+            <div class="copyRow">
+              <div style="font-weight:700">signature</div>
+              <button type="button" onclick="copyText('signature')">Copy signature</button>
+            </div>
+            <textarea id="signature" readonly>${signature.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</textarea>
+          </div>
+
+          <div class="card" style="margin-top:14px">
+            <div style="font-weight:700;margin-bottom:8px">Proof link</div>
+            <div class="small"><a href="${verifyPageUrl}">${verifyPageUrl}</a></div>
+          </div>
+        </div>
+      `,
+      scripts: ['/assets/verify.js']
+    })
+  );
 });
 
 const port = Number(process.env.PORT || 8080);
