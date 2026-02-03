@@ -118,10 +118,17 @@ app.get('/login', (req, res) => {
     input{padding:10px;font-size:16px;width:100%}
     button{padding:10px 14px;font-size:16px;cursor:pointer;margin-top:12px}
     .err{color:#b00020;margin-top:10px}
-    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.90);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);padding:12px 0;margin:-40px -40px 24px -40px}
-    .topbarInner{max-width:520px;margin:0 auto;padding:0 40px;display:flex;align-items:center;justify-content:space-between}
-    .brand{font-weight:900;letter-spacing:0.2px}
-  </style>
+  
+    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.86);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);height:56px;display:flex;align-items:center;margin:-40px -40px 18px -40px;z-index:1000}
+    .topbarInner{max-width:520px;margin:0 auto;padding:0 20px;width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .brand{font-weight:900;letter-spacing:0.2px;font-size:16px}
+    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff;white-space:nowrap;font-size:14px}
+    @media (max-width: 420px){
+      .topbar{height:52px;margin:-40px -40px 14px -40px}
+      .brand{font-size:15px}
+      a.logout{padding:7px 10px;font-size:13px}
+    }
+</style>
 </head>
 <body>
   <div class="topbar"><div class="topbarInner"><div class="brand">Random Number Generator</div></div></div>
@@ -133,7 +140,6 @@ app.get('/login', (req, res) => {
       ${err ? `<div class="err">${err.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</div>` : ''}
     </form>
   </div>
-<script src="/assets/result.js" defer></script>
 </body>
 </html>`);
 });
@@ -367,12 +373,18 @@ app.get('/', (req, res) => {
     .barWrap{margin-top:14px;height:10px;background:#eee;border-radius:999px;overflow:hidden;display:none}
     .bar{height:100%;width:0%;background:linear-gradient(90deg,#6a5acd,#00bcd4);border-radius:999px}
     .muted{color:#666;font-size:13px;margin-top:8px}
-    canvas.confetti{position:fixed;inset:0;pointer-events:none;z-index:9999}
-    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.85);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);padding:12px 0;margin:-40px -40px 24px -40px}
-    .topbarInner{max-width:720px;margin:0 auto;padding:0 40px;display:flex;align-items:center;justify-content:space-between}
-    .brand{font-weight:900;letter-spacing:0.2px}
-    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff}
-  </style>
+    canvas.confetti{position:fixed;inset:0;pointer-events:none;z-index:500}
+  
+    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.86);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);height:56px;display:flex;align-items:center;margin:-40px -40px 18px -40px;z-index:1000}
+    .topbarInner{max-width:720px;margin:0 auto;padding:0 20px;width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .brand{font-weight:900;letter-spacing:0.2px;font-size:16px}
+    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff;white-space:nowrap;font-size:14px}
+    @media (max-width: 420px){
+      .topbar{height:52px;margin:-40px -40px 14px -40px}
+      .brand{font-size:15px}
+      a.logout{padding:7px 10px;font-size:13px}
+    }
+</style>
 </head>
 <body>
   
@@ -405,7 +417,6 @@ app.get('/', (req, res) => {
   </div>
 
 <script src="/assets/app.js" defer></script>
-<script src="/assets/result.js" defer></script>
 </body>
 </html>`);
 });
@@ -533,11 +544,17 @@ app.get('/verify/:id', async (req, res) => {
     .qr{border:1px solid #ddd;border-radius:10px;padding:10px;display:inline-block;background:#fff}
     button{padding:8px 12px;font-size:14px;cursor:pointer}
     a{word-break:break-word}
-    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.85);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);padding:12px 0;margin:-40px -40px 24px -40px}
-    .topbarInner{max-width:860px;margin:0 auto;padding:0 40px;display:flex;align-items:center;justify-content:space-between}
-    .brand{font-weight:900;letter-spacing:0.2px}
-    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff}
-  </style>
+  
+    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.86);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);height:56px;display:flex;align-items:center;margin:-40px -40px 18px -40px;z-index:1000}
+    .topbarInner{max-width:860px;margin:0 auto;padding:0 20px;width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .brand{font-weight:900;letter-spacing:0.2px;font-size:16px}
+    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff;white-space:nowrap;font-size:14px}
+    @media (max-width: 420px){
+      .topbar{height:52px;margin:-40px -40px 14px -40px}
+      .brand{font-size:15px}
+      a.logout{padding:7px 10px;font-size:13px}
+    }
+</style>
 </head>
 <body>
   
@@ -583,7 +600,6 @@ app.get('/verify/:id', async (req, res) => {
   <p style="margin-top:18px"><a href="/">Back</a></p>
 
 <script src="/assets/verify.js" defer></script>
-<script src="/assets/result.js" defer></script>
 </body>
 </html>`);
 });
@@ -628,12 +644,18 @@ app.get('/result/:id', async (req, res) => {
     a.primary{background:#111;color:#fff;border-color:#111}
     a.ghost{background:#fff;color:#111}
     .small{color:#666;font-size:13px;margin-top:10px}
-    canvas.confetti{position:fixed;inset:0;pointer-events:none;z-index:9999}
-    .topbar{position:fixed;top:0;left:0;right:0;background:rgba(255,255,255,0.85);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);padding:12px 0;z-index:1000}
-    .topbarInner{max-width:760px;margin:0 auto;padding:0 20px;display:flex;align-items:center;justify-content:space-between}
-    .brand{font-weight:900;letter-spacing:0.2px}
-    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff}
-  </style>
+    canvas.confetti{position:fixed;inset:0;pointer-events:none;z-index:500}
+  
+    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.86);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);height:56px;display:flex;align-items:center;margin:-40px -40px 18px -40px;z-index:1000}
+    .topbarInner{max-width:760px;margin:0 auto;padding:0 20px;width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .brand{font-weight:900;letter-spacing:0.2px;font-size:16px}
+    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff;white-space:nowrap;font-size:14px}
+    @media (max-width: 420px){
+      .topbar{height:52px;margin:-40px -40px 14px -40px}
+      .brand{font-size:15px}
+      a.logout{padding:7px 10px;font-size:13px}
+    }
+</style>
 </head>
 <body>
   
