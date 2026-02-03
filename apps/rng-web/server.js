@@ -57,7 +57,7 @@ app.get('/', (req, res) => {
     const min = Number($('min').value);
     const max = Number($('max').value);
     try {
-      const r = await fetch(`/api/rng?min=${encodeURIComponent(min)}&max=${encodeURIComponent(max)}`);
+      const r = await fetch('/api/rng?min=' + encodeURIComponent(min) + '&max=' + encodeURIComponent(max));
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error || 'Request failed');
       $('out').textContent = String(j.value);
