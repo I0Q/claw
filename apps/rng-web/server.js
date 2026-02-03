@@ -225,6 +225,9 @@ main{padding-top:calc(var(--topbar-h) + 18px);padding-left:var(--pad);padding-ri
 .small{color:#666;font-size:13px}
 .err{color:#b00020;margin-top:10px}
 .row{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end}
+.genRow{justify-content:center;width:100%;max-width:560px;margin:0 auto}
+.genRow > div{display:flex;flex-direction:column;align-items:center}
+
 label{display:block;margin:0 0 6px;font-weight:600}
 .formStack{display:flex;flex-direction:column;gap:12px}
 
@@ -408,7 +411,7 @@ app.get('/', (req, res) => {
           <div class="h1">Random Number Generator</div>
           <div class="p">Backend uses <code>random.org</code> via their JSON-RPC API.</div>
           <div class="card centerCard">
-            <div class="row" style="justify-content:center">
+            <div class="row genRow">
               <div>
                 <label for="min">Min (inclusive)</label>
                 <input id="min" type="number" value="1" />
