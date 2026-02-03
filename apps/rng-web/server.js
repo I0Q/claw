@@ -29,7 +29,7 @@ app.get('/', (req, res) => {
 </head>
 <body>
   <h1>Random Number Generator</h1>
-  <p>Backend uses <code>crypto.randomInt</code> (CSPRNG). Not <code>Math.random</code>.</p>
+  <p>Backend uses <code>random.org</code> via their JSON-RPC API.</p>
 
   <div class="card">
     <div class="row">
@@ -70,7 +70,7 @@ app.get('/', (req, res) => {
 </html>`);
 });
 
-app.get('/api/rng', (req, res) => {
+app.get('/api/rng', async (req, res) => {
   const min = Number(req.query.min);
   const max = Number(req.query.max);
 
@@ -84,14 +84,45 @@ app.get('/api/rng', (req, res) => {
     return res.status(400).json({ ok: false, error: 'max must be >= min' });
   }
 
-  // crypto.randomInt is [min, max) so we use max+1 for inclusive max, with overflow guard.
-  const maxExclusive = max + 1;
-  if (!Number.isSafeInteger(maxExclusive)) {
-    return res.status(400).json({ ok: false, error: 'range too large' });
-  }
+  try {
+    const payload = {
+      jsonrpc: '2.0',
+      method: 'generateIntegers',
+      params: {
+        apiKey: process.env.RANDOM_ORG_API_KEY,
+        n: 1,
+        min,
+        max,
+        replacement: true,
+        base: 10
+      },
+      id: Date.now()
+    };
 
-  const value = crypto.randomInt(min, maxExclusive);
-  res.json({ ok: true, value, min, max });
+    const r = await fetch('https://api.random.org/json-rpc/4/invoke', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const j = await r.json().catch(() => null);
+    if (!r.ok) {
+      return res.status(502).json({ ok: false, error: 'random.org request failed', status: r.status, detail: j });
+    }
+
+    if (!j || j.error) {
+      return res.status(502).json({ ok: false, error: 'random.org error', detail: j && (j.error || j) });
+    }
+
+    const value = j?.result?.random?.data?.[0];
+    if (!Number.isInteger(value)) {
+      return res.status(502).json({ ok: false, error: 'random.org returned unexpected payload', detail: j });
+    }
+
+    res.json({ ok: true, value, min, max, source: 'random.org' });
+  } catch (e) {
+    res.status(502).json({ ok: false, error: 'random.org call failed', message: String(e?.message || e) });
+  }
 });
 
 const port = Number(process.env.PORT || 8080);
