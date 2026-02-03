@@ -147,12 +147,10 @@ app.get('/login', (req, res) => {
         <div class="pageCenter">
           <div class="h1">Enter passphrase</div>
           <div class="card">
-            <form method="post" action="/login">
+            <form method="post" action="/login" class="formStack">
               <label for="pass">Passphrase</label>
               <input id="pass" type="password" name="passphrase" placeholder="Passphrase" autofocus required />
-              <div class="row" style="margin-top:12px">
-                <button type="submit">Unlock</button>
-              </div>
+              <button type="submit">Unlock</button>
               ${err ? `<div class="err">${err.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</div>` : ''}
             </form>
           </div>
@@ -208,7 +206,7 @@ body{margin:0;color:#111;font-family: ui-sans-serif, system-ui, -apple-system, S
   background:rgba(255,255,255,0.88);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);
 }
 .topbarInner{max-width:var(--maxw);width:100%;margin:0 auto;padding:0 var(--pad);display:flex;align-items:center;justify-content:space-between;gap:12px}
-.brand{font-weight:900;letter-spacing:0.2px;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand{font-weight:700;letter-spacing:0.2px;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:420px){.brand{font-size:15px}}
 .logout{font-weight:800;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff;white-space:nowrap;font-size:14px}
 @media (max-width:420px){.logout{padding:7px 10px;font-size:13px}}
@@ -216,16 +214,18 @@ main{padding-top:calc(var(--topbar-h) + 18px);padding-left:var(--pad);padding-ri
 .pageCenter{max-width:720px;margin:0 auto}
 
 .container{max-width:720px;margin:0 auto}
-.card{background:rgba(255,255,255,0.92);border:1px solid rgba(0,0,0,0.10);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px}
-.h1{font-size:40px;line-height:1.05;margin:12px 0 14px;font-weight:900}
+.card{background:rgba(255,255,255,0.92);border:1px solid rgba(0,0,0,0.10);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px}
+.h1{font-size:40px;line-height:1.05;margin:12px 0 14px;font-weight:800}
 @media (max-width:420px){.h1{font-size:34px}}
 .p{margin:8px 0;color:#333}
 .small{color:#666;font-size:13px}
 .err{color:#b00020;margin-top:10px}
 .row{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end}
-label{display:block;margin:12px 0 6px;font-weight:600}
+label{display:block;margin:0 0 6px;font-weight:600}
+.formStack{display:flex;flex-direction:column;gap:12px}
+
 input[type=number],input[type=password]{padding:10px;font-size:16px;width:220px;max-width:100%;border:1px solid rgba(0,0,0,0.12);border-radius:12px;background:#fff}
-button{padding:12px 16px;font-size:16px;cursor:pointer;border-radius:14px;border:1px solid rgba(0,0,0,0.10);background:#1565ff;color:#fff;font-weight:900;box-shadow:0 10px 24px rgba(21,101,255,0.18)}
+button{padding:12px 16px;font-size:16px;cursor:pointer;border-radius:14px;border:1px solid rgba(0,0,0,0.10);background:#1565ff;color:#fff;font-weight:800;box-shadow:0 10px 24px rgba(21,101,255,0.18)}
 button:disabled{opacity:0.55;cursor:not-allowed}
 button.secondary{background:#fff;color:#1565ff;border-color:rgba(21,101,255,0.30);box-shadow:none}
 
@@ -233,13 +233,13 @@ button.secondary{background:#fff;color:#1565ff;border-color:rgba(21,101,255,0.30
 .progressBar{height:10px;background:#eee;border-radius:999px;overflow:hidden}
 .progressFill{height:100%;width:0%;background:linear-gradient(90deg,#6a5acd,#00bcd4);border-radius:999px}
 .status{margin-top:8px;color:#666;font-size:13px;min-height:18px}
-.centerWrap{max-width:760px;margin:0 auto;display:flex;align-items:center;justify-content:center;min-height:calc(100vh - var(--topbar-h))}
+.centerWrap{max-width:760px;margin:0 auto;display:flex;align-items:center;justify-content:center;min-height:calc(100dvh - var(--topbar-h) - 18px - 40px)}
 .resultCard{text-align:center;padding:26px}
 .numBox{display:inline-flex;align-items:center;justify-content:center;min-width:160px;min-height:160px;padding:18px 26px;border-radius:22px;
   background:linear-gradient(135deg, rgba(106,90,205,0.18), rgba(0,188,212,0.16));border:1px solid rgba(0,0,0,0.06)}
-.num{font-size:84px;font-weight:950;letter-spacing:1px;line-height:1}
+.num{font-size:84px;font-weight:800;letter-spacing:1px;line-height:1}
 .btnRow{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:16px}
-.btn{display:inline-block;padding:12px 16px;border-radius:12px;text-decoration:none;font-weight:900;border:1px solid rgba(0,0,0,0.12)}
+.btn{display:inline-block;padding:12px 16px;border-radius:12px;text-decoration:none;font-weight:800;border:1px solid rgba(0,0,0,0.12)}
 .btnPrimary{background:#1565ff;color:#fff;border-color:#1565ff;box-shadow:0 10px 24px rgba(21,101,255,0.18)}
 .btnGhost{background:#fff;color:#1565ff;border-color:rgba(21,101,255,0.30)}
 textarea{width:100%;min-height:160px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;padding:10px;border-radius:12px;border:1px solid rgba(0,0,0,0.12);background:#fff}
@@ -521,7 +521,7 @@ app.get('/result/:id', (req, res) => {
         <div class="centerWrap">
           <div class="wrap" style="width:100%;max-width:760px">
             <div class="card resultCard">
-              <div style="font-weight:900;font-size:18px">Result</div>
+              <div style="font-weight:800;font-size:18px">Result</div>
               <div class="numBox" style="margin:18px auto 6px auto"><div class="num">${String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</div></div>
               <div class="small">Generated by random.org (signed)</div>
               <div class="btnRow">
