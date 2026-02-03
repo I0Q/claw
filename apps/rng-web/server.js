@@ -623,40 +623,33 @@ app.get('/result/:id', async (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Result</title>
   <style>
-    body{padding-top:72px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
-      background:
+    body{margin:0;min-height:100vh;background:
         radial-gradient(900px 280px at 20% 0%, rgba(106,90,205,0.18), transparent 60%),
         radial-gradient(900px 280px at 80% 20%, rgba(0,188,212,0.16), transparent 60%),
         #ffffff;
     }
-    .wrap{width:min(760px, calc(100vw - 40px));}
-    .card{border:1px solid rgba(0,0,0,0.10);border-radius:18px;padding:26px;background:
-      linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.92));
-      box-shadow: 0 16px 50px rgba(0,0,0,0.10);
-      text-align:center;
+    .topbar{position:fixed;top:0;left:0;right:0;background:rgba(255,255,255,0.86);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);height:56px;display:flex;align-items:center;z-index:1000}
+    .topbarInner{max-width:760px;margin:0 auto;padding:0 20px;width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .brand{font-weight:900;letter-spacing:0.2px;font-size:16px}
+    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff;white-space:nowrap;font-size:14px}
+    @media (max-width: 420px){
+      .topbar{height:52px}
+      .brand{font-size:15px}
+      a.logout{padding:7px 10px;font-size:13px}
     }
+    main{padding-top:72px;min-height:100vh;display:flex;align-items:center;justify-content:center}
+    .wrap{width:100%;max-width:760px;padding:0 20px;box-sizing:border-box}
+    .card{border:1px solid rgba(0,0,0,0.10);border-radius:18px;padding:26px;background:linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.92));
+      box-shadow: 0 16px 50px rgba(0,0,0,0.10);text-align:center;}
     .num{font-size:84px;font-weight:950;letter-spacing:1px;display:inline-flex;align-items:center;justify-content:center;
-      padding:18px 26px;border-radius:22px;
-      background: linear-gradient(135deg, rgba(106,90,205,0.18), rgba(0,188,212,0.16));
-      border: 1px solid rgba(0,0,0,0.06);
-      margin: 18px auto 6px auto;
-    }
+      padding:18px 26px;border-radius:22px;background: linear-gradient(135deg, rgba(106,90,205,0.18), rgba(0,188,212,0.16));
+      border: 1px solid rgba(0,0,0,0.06);margin: 18px auto 6px auto;}
     .btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:16px}
     a.btn{display:inline-block;padding:12px 16px;border-radius:12px;text-decoration:none;font-weight:700;border:1px solid rgba(0,0,0,0.12)}
     a.primary{background:#111;color:#fff;border-color:#111}
     a.ghost{background:#fff;color:#111}
     .small{color:#666;font-size:13px;margin-top:10px}
     canvas.confetti{position:fixed;inset:0;pointer-events:none;z-index:500}
-  
-    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.86);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);height:56px;display:flex;align-items:center;margin:-40px -40px 18px -40px;z-index:1000}
-    .topbarInner{max-width:760px;margin:0 auto;padding:0 20px;width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px}
-    .brand{font-weight:900;letter-spacing:0.2px;font-size:16px}
-    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff;white-space:nowrap;font-size:14px}
-    @media (max-width: 420px){
-      .topbar{height:52px;margin:-40px -40px 14px -40px}
-      .brand{font-size:15px}
-      a.logout{padding:7px 10px;font-size:13px}
-    }
 </style>
 </head>
 <body>
@@ -676,8 +669,7 @@ app.get('/result/:id', async (req, res) => {
         <a class="btn primary" href="${verifyUrl}">Verify</a>
         <a class="btn ghost" href="/">Generate another</a>
       </div>
-      <div style="margin-top:14px"><a href="/logout">Logout</a></div>
-    </div>
+          </div>
   </div>
 <script src="/assets/result.js" defer></script>
 </body>
