@@ -208,32 +208,16 @@ app.get('/verify/:id', async (req, res) => {
 <body>
   <h1>Verification</h1>
 
-  <div class="row">
-    <div class="qr">
-      <div style="font-weight:700;margin-bottom:8px">Scan to view this proof</div>
-      <img alt="QR" src="${qr}" width="240" height="240" />
-      <div style="margin-top:8px;font-size:12px">${verifyPageUrl}</div>
-    </div>
+  <p>This page is a proof bundle: it contains the <code>random</code> object and <code>signature</code> you can verify directly on random.org.</p>
 
-    <div style="flex:1;min-width:280px">
-      <p>This page is a proof bundle: it contains the <code>random</code> object and <code>signature</code> you can verify directly on random.org.</p>
-      <div class="card">
-        <div style="font-weight:700">How to verify</div>
-        <ol style="margin:10px 0 0 18px">
-          <li>Open: <a href="https://api.random.org/signatures/form" target="_blank" rel="noreferrer">https://api.random.org/signatures/form</a></li>
-          <li>Paste the <b>random (JSON)</b> and <b>signature</b> from below</li>
-          <li>Submit — random.org should confirm the signature is valid</li>
-        </ol>
-      </div>
-    </div>
+  <div class="card">
+    <div style="font-weight:700">Verify on random.org</div>
+    <ol style="margin:10px 0 0 18px">
+      <li>Open: <a href="https://api.random.org/signatures/form" target="_blank" rel="noreferrer">https://api.random.org/signatures/form</a></li>
+      <li>Paste <b>random (JSON)</b> and <b>signature</b> from below</li>
+      <li>Submit — random.org should confirm the signature is valid</li>
+    </ol>
   </div>
-
-  <h2 style="margin-top:26px">Verify on random.org (manual)</h2>
-  <ol>
-    <li>Open the random.org verification form link above.</li>
-    <li>Paste the <b>random</b> JSON and the <b>signature</b> from below.</li>
-    <li>Submit — it should say the signature is valid.</li>
-  </ol>
 
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
@@ -249,6 +233,14 @@ app.get('/verify/:id', async (req, res) => {
       <button type="button" onclick="copyText('signature')">Copy signature</button>
     </div>
     <textarea id="signature" readonly>${signature.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</textarea>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div style="font-weight:700;margin-bottom:8px">QR code (proof link)</div>
+    <div class="qr">
+      <img alt="QR" src="${qr}" width="240" height="240" />
+    </div>
+    <div style="margin-top:8px;font-size:12px"><a href="${verifyPageUrl}">${verifyPageUrl}</a></div>
   </div>
 
   <p style="margin-top:18px"><a href="/">Back</a></p>
