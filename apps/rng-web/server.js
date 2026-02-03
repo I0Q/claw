@@ -5,6 +5,8 @@ import rateLimit from 'express-rate-limit';
 import QRCode from 'qrcode';
 
 const app = express();
+// Bump this on each deploy to bust mobile Safari caches for /assets/*
+const BUILD_ID = String(Date.now());
 app.set('trust proxy', 1);
 
 // Basic hardening headers (OWASP baseline)
@@ -113,6 +115,7 @@ app.get('/login', (req, res) => {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Login</title>
+  <link rel=\"stylesheet\" href=\"/assets/site.css?v=${BUILD_ID}\">
   <style>
     body{padding-top:72px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:520px}
     .card{border:1px solid #ddd;border-radius:10px;padding:18px}
@@ -199,7 +202,34 @@ function requireAuth(req, res, next) {
 app.use(requireAuth);
 
 // Static JS assets (keeps CSP happy)
+
+app.get('/assets/site.css', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.type('text/css').send(`
+    :root{--pad:40px}
+    @media (max-width: 420px){:root{--pad:20px}}
+
+    body{font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif}
+
+    .topbar{position:sticky;top:0;background:rgba(255,255,255,0.86);backdrop-filter:blur(10px);border-bottom:1px solid rgba(0,0,0,0.06);
+      height:56px;display:flex;align-items:center;margin:calc(-1 * var(--pad)) calc(-1 * var(--pad)) 18px calc(-1 * var(--pad));z-index:1000}
+    .topbarInner{max-width:860px;margin:0 auto;padding:0 20px;width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .brand{font-weight:900;letter-spacing:0.2px;font-size:16px}
+    a.logout{font-weight:700;text-decoration:none;color:#111;border:1px solid rgba(0,0,0,0.12);padding:8px 12px;border-radius:12px;background:#fff;white-space:nowrap;font-size:14px}
+
+    @media (max-width: 420px){
+      .topbar{height:52px;margin:calc(-1 * var(--pad)) calc(-1 * var(--pad)) 14px calc(-1 * var(--pad))}
+      .brand{font-size:15px}
+      a.logout{padding:7px 10px;font-size:13px}
+    }
+
+    /* Confetti should never cover the topbar */
+    canvas.confetti{z-index:500}
+  `);
+});
+
 app.get('/assets/app.js', (req, res) => {
+  res.setHeader('Cache-Control','no-store');
   res.type('application/javascript').send(`
 
   const $ = (id) => document.getElementById(id);
@@ -266,6 +296,7 @@ app.get('/assets/app.js', (req, res) => {
 });
 
 app.get('/assets/verify.js', (req, res) => {
+  res.setHeader('Cache-Control','no-store');
   res.type('application/javascript').send(`
   async function copyText(id) {
     const el = document.getElementById(id);
@@ -284,6 +315,7 @@ app.get('/assets/verify.js', (req, res) => {
 
 
 app.get('/assets/result.js', (req, res) => {
+  res.setHeader('Cache-Control','no-store');
   res.type('application/javascript').send(`
   (function(){
     function confettiBurst(){
@@ -347,6 +379,7 @@ app.get('/', (req, res) => {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>RNG</title>
+  <link rel=\"stylesheet\" href=\"/assets/site.css?v=${BUILD_ID}\">
   <style>
     body{padding-top:72px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:720px;
       background:
@@ -418,7 +451,7 @@ app.get('/', (req, res) => {
     <div id="err" style="color:#b00020;margin-top:8px"></div>
   </div>
 
-<script src="/assets/app.js" defer></script>
+<script src="/assets/app.js?v=${BUILD_ID}" defer></script>
 </body>
 </html>`);
 });
@@ -538,6 +571,7 @@ app.get('/verify/:id', async (req, res) => {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Verify RNG (random.org)</title>
+  <link rel=\"stylesheet\" href=\"/assets/site.css?v=${BUILD_ID}\">
   <style>
     body{padding-top:72px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;max-width:860px}
     .card{border:1px solid #ddd;border-radius:14px;padding:18px;background:#fff;box-shadow:0 10px 30px rgba(0,0,0,0.06)}
@@ -601,7 +635,7 @@ app.get('/verify/:id', async (req, res) => {
 
   <p style="margin-top:18px"><a href="/">Back</a></p>
 
-<script src="/assets/verify.js" defer></script>
+<script src="/assets/verify.js?v=${BUILD_ID}" defer></script>
 </body>
 </html>`);
 });
@@ -622,6 +656,7 @@ app.get('/result/:id', async (req, res) => {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Result</title>
+  <link rel=\"stylesheet\" href=\"/assets/site.css?v=${BUILD_ID}\">
   <style>
     body{margin:0;min-height:100vh;background:
         radial-gradient(900px 280px at 20% 0%, rgba(106,90,205,0.18), transparent 60%),
@@ -671,7 +706,7 @@ app.get('/result/:id', async (req, res) => {
       </div>
           </div>
   </div>
-<script src="/assets/result.js" defer></script>
+<script src="/assets/result.js?v=${BUILD_ID}" defer></script>
 </body>
 </html>`);
 });
