@@ -1,9 +1,21 @@
 import express from 'express';
 import crypto from 'crypto';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import QRCode from 'qrcode';
 
 const app = express();
 app.set('trust proxy', 1);
+
+// Basic hardening headers (OWASP baseline)
+app.disable('x-powered-by');
+app.use(
+  helmet({
+    // We serve only inline scripts/styles right now; keep CSP off for now to avoid breaking UI.
+    contentSecurityPolicy: false
+  })
+);
+
 app.use(express.json({ limit: '64kb' }));
 
 // --- Passphrase gate (24h sessions) ---
@@ -111,7 +123,17 @@ app.get('/login', (req, res) => {
 
 // Login handler (POST)
 app.use(express.urlencoded({ extended: false, limit: '4kb' }));
-app.post('/login', (req, res) => {
+
+// Rate-limit login attempts (OWASP brute-force mitigation)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: 'Too many login attempts. Try again later.'
+});
+
+app.post('/login', loginLimiter, (req, res) => {
   if (!PASSPHRASE_SHA256 || !/^[0-9a-f]{64}$/.test(PASSPHRASE_SHA256)) {
     return res.status(500).type('html').send('<h1>Server misconfigured</h1>');
   }
@@ -120,10 +142,10 @@ app.post('/login', (req, res) => {
   const ok = crypto.timingSafeEqual(Buffer.from(digest, 'hex'), Buffer.from(PASSPHRASE_SHA256, 'hex'));
 
   if (!ok) {
-    // small delay to slow brute force
-    const t = Date.now() + 450;
-    while (Date.now() < t) {}
-    return res.redirect('/login?err=Wrong%20passphrase');
+    // Non-blocking delay to slow brute force without burning CPU.
+    return setTimeout(() => {
+      res.redirect('/login?err=Wrong%20passphrase');
+    }, 450);
   }
 
   const sid = crypto.randomUUID();
